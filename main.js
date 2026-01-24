@@ -21,7 +21,13 @@ let offsetX = window.innerWidth / 2 - (WORLD_SIZE * scale) / 2;
 let offsetY = window.innerHeight / 2 - (WORLD_SIZE * scale) / 2;
 
 let pixels = [];
-let selectedPixel = null;
+let selectedPixels = []; // Array for multiple selected pixels
+let isDraggingCanvas = false; // Flag for panning the canvas
+let isSelectingPixels = false; // Flag for dragging to select pixels
+let selectionStartX = 0;
+let selectionStartY = 0;
+let selectionEndX = 0;
+let selectionEndY = 0;
 
 // --- Idol Group Info ---
 const idolInfo = {
@@ -32,7 +38,6 @@ const idolInfo = {
 };
 
 function draw() {
-    // console.log('draw function called');
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -72,6 +77,21 @@ function draw() {
         }
     });
 
+    // Draw selection rectangle if currently selecting
+    if (isSelectingPixels && selectionStartX !== selectionEndX && selectionStartY !== selectionEndY) {
+        ctx.strokeStyle = 'lime';
+        ctx.lineWidth = 2 / scale;
+        ctx.strokeRect(selectionStartX, selectionStartY, selectionEndX - selectionStartX, selectionEndY - selectionStartY);
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+        ctx.fillRect(selectionStartX, selectionStartY, selectionEndX - selectionStartX, selectionEndY - selectionStartY);
+    }
+    // Draw visual indicator for selected pixels (after selection is finalized)
+    selectedPixels.forEach(p => {
+        ctx.strokeStyle = 'yellow';
+        ctx.lineWidth = 2 / scale;
+        ctx.strokeRect(p.x, p.y, GRID_SIZE, GRID_SIZE);
+    });
+
     ctx.restore();
     updateMinimap();
 }
@@ -84,14 +104,12 @@ fetch('/api/pixels')
         return response.json();
     })
     .then(initialPixels => {
-        // console.log('Fetched initial pixels:', initialPixels);
         pixels = initialPixels;
         draw();
     })
     .catch(e => console.error('Error fetching initial pixels:', e));
 
 socket.on('pixel_update', (pixel) => {
-    // Check if pixel already exists and update it, otherwise add it.
     const index = pixels.findIndex(p => p.x === pixel.x && p.y === pixel.y);
     if (index > -1) {
         pixels[index] = pixel;
@@ -102,40 +120,114 @@ socket.on('pixel_update', (pixel) => {
 });
 
 
-// --- User Interactions ---
+// --- User Interactions (Dragging and Selecting) ---
 
-let isDragging = false;
-let lastX, lastY;
+let lastMouseX, lastMouseY;
 
 canvas.onmousedown = (e) => {
-    isDragging = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
+    // If Ctrl key is pressed, start selection drag
+    if (e.ctrlKey) {
+        isSelectingPixels = true;
+        const worldX = (e.clientX - offsetX) / scale;
+        const worldY = (e.clientY - offsetY) / scale;
+        selectionStartX = Math.floor(worldX / GRID_SIZE) * GRID_SIZE;
+        selectionStartY = Math.floor(worldY / GRID_SIZE) * GRID_SIZE;
+        selectionEndX = selectionStartX; // Initialize end with start
+        selectionEndY = selectionStartY;
+        selectedPixels = []; // Clear previous selection
+        sidePanel.style.display = 'none'; // Hide panel during selection
+    } else {
+        isDraggingCanvas = true;
+    }
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
 };
 
 window.onmousemove = (e) => {
-    if (!isDragging) return;
-    offsetX += e.clientX - lastX;
-    offsetY += e.clientY - lastY;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    draw();
-};
-
-window.onmouseup = (e) => {
-    // This part is crucial: only reset isDragging here
-    isDragging = false;
-    
-    // Hide panel if click is outside both the canvas and the side panel
-    if (e.target !== canvas && !sidePanel.contains(e.target)) {
-        sidePanel.style.display = 'none';
-        selectedPixel = null;
+    if (isDraggingCanvas) {
+        offsetX += e.clientX - lastMouseX;
+        offsetY += e.clientY - lastMouseY;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        draw();
+    } else if (isSelectingPixels) {
+        const worldX = (e.clientX - offsetX) / scale;
+        const worldY = (e.clientY - offsetY) / scale;
+        selectionEndX = Math.floor(worldX / GRID_SIZE) * GRID_SIZE;
+        selectionEndY = Math.floor(worldY / GRID_SIZE) * GRID_SIZE;
+        draw();
     }
 };
 
+window.onmouseup = (e) => {
+    if (isDraggingCanvas) { // Finished dragging
+        isDraggingCanvas = false;
+        // After drag, if no selection happened, hide panel
+        if (selectedPixels.length === 0) { // If no selection was active, then hide
+            sidePanel.style.display = 'none';
+        }
+        return; // Don't proceed to click/selection logic if it was a drag
+    }
+
+    if (isSelectingPixels) { // Finished selecting
+        isSelectingPixels = false;
+        
+        // Normalize selection rectangle (ensure positive width/height)
+        const rectX = Math.min(selectionStartX, selectionEndX);
+        const rectY = Math.min(selectionStartY, selectionEndY);
+        const rectWidth = Math.abs(selectionEndX - selectionStartX);
+        const rectHeight = Math.abs(selectionEndY - selectionStartY);
+
+        // Calculate selected pixels
+        selectedPixels = [];
+        if (rectWidth >= GRID_SIZE || rectHeight >= GRID_SIZE) { // Only if a valid rectangle was drawn (at least one grid unit size)
+            for (let x = rectX; x < rectX + rectWidth; x += GRID_SIZE) {
+                for (let y = rectY; y < rectY + rectHeight; y += GRID_SIZE) {
+                    const existingPixel = pixels.find(p => p.x === x && p.y === y);
+                    if (!existingPixel) { // Only allow selecting unowned pixels
+                        selectedPixels.push({ x, y });
+                    }
+                }
+            }
+        } else { // Single click in selection mode (if ctrl was pressed but no drag, or minimal drag)
+             const worldX = (e.clientX - offsetX) / scale;
+             const worldY = (e.clientY - offsetY) / scale;
+             if (worldX >= 0 && worldX < WORLD_SIZE && worldY >= 0 && worldY < WORLD_SIZE) {
+                 const gx = Math.floor(worldX / GRID_SIZE) * GRID_SIZE;
+                 const gy = Math.floor(worldY / GRID_SIZE) * GRID_SIZE;
+                 const existingPixel = pixels.find(p => p.x === gx && p.y === gy);
+                 if (!existingPixel) { // Only select unowned single pixel
+                    selectedPixels.push({ x: gx, y: gy });
+                 }
+             }
+        }
+        
+        updateSidePanel(); // Update panel based on selectedPixels
+        if (selectedPixels.length > 0) {
+            sidePanel.style.display = 'block';
+        } else {
+            sidePanel.style.display = 'none';
+        }
+        draw(); // Redraw with selected pixels highlighted
+        return; // Don't proceed to regular click logic
+    }
+    
+    // If not dragging and not selecting, then it's a regular click (possibly outside canvas)
+    // Clear selection if click outside canvas OR existing selection
+    if (e.target !== canvas || selectedPixels.length > 0) { // If click outside canvas OR selectedPixels not empty
+        sidePanel.style.display = 'none';
+        selectedPixels = [];
+        draw(); // Redraw to clear selection highlight
+    }
+};
+
+
 canvas.onclick = (e) => {
-    // Only process clicks on the canvas
-    if (e.target !== canvas) {
+    // This event listener will be primarily for single clicks
+    // Logic for selection is now handled in onmouseup if isSelectingPixels was true
+    // If it was a drag, isDraggingCanvas would have been true.
+    // So if neither is true, it's a regular single click on canvas.
+    if (e.target !== canvas || isDraggingCanvas || isSelectingPixels) { // If not on canvas or part of a drag/selection
         return;
     }
 
@@ -148,37 +240,92 @@ canvas.onclick = (e) => {
         const clickedX = gx * GRID_SIZE;
         const clickedY = gy * GRID_SIZE;
 
-        selectedPixel = { x: clickedX, y: clickedY };
+        selectedPixels = []; // Clear previous selection
         const existingPixel = pixels.find(p => p.x === clickedX && p.y === clickedY);
         
-        updateSidePanel(existingPixel);
-        sidePanel.style.display = 'block';
+        if (existingPixel) { // If single clicked an owned pixel, show its info
+            selectedPixels.push(existingPixel); // Temporarily add for panel display
+            updateSidePanel(existingPixel); // Pass the owned pixel to display its info
+            sidePanel.style.display = 'block';
+        } else { // If single clicked an unowned pixel, select it
+            selectedPixels.push({ x: clickedX, y: clickedY });
+            updateSidePanel(); // Update panel with the single selected unowned pixel
+            sidePanel.style.display = 'block';
+        }
+        draw();
     } else {
         sidePanel.style.display = 'none';
-        selectedPixel = null;
+        selectedPixels = [];
+        draw();
     }
 };
 
 
-function updateSidePanel(pixel) {
-    const gx = selectedPixel.x / GRID_SIZE;
-    const gy = selectedPixel.y / GRID_SIZE;
-    areaIdText.innerText = `Area #${gx}-${gy}`;
+// Function to get selected pixels within a rectangle (not actively used in current logic but useful)
+function getPixelsInSelection(rectX, rectY, rectWidth, rectHeight) {
+    const newSelected = [];
+    for (let x = rectX; x < rectX + rectWidth; x += GRID_SIZE) {
+        for (let y = rectY; y < rectY + rectHeight; y += GRID_SIZE) {
+            // Ensure x, y are within WORLD_SIZE and only select unowned pixels
+            if (x >= 0 && x < WORLD_SIZE && y >= 0 && y < WORLD_SIZE) {
+                const existingPixel = pixels.find(p => p.x === x && p.y === y);
+                if (!existingPixel) {
+                    newSelected.push({ x, y });
+                }
+            }
+        }
+    }
+    return newSelected;
+}
 
-    if (pixel) { // Pixel is owned
-        pixelInfo.style.display = 'block';
-        purchaseForm.style.display = 'none';
-        statusTag.textContent = '소유자 있음';
-        statusTag.style.background = '#ff4d4d';
-        ownerNickname.textContent = pixel.owner_nickname;
-        idolGroup.textContent = pixel.idol_group_name;
-    } else { // Pixel is available
-        pixelInfo.style.display = 'none';
-        purchaseForm.style.display = 'block';
-        statusTag.textContent = '구독 가능';
-        statusTag.style.background = '#00d4ff';
+
+// Modified updateSidePanel to handle multiple selections
+function updateSidePanel(singleOwnedPixel = null) {
+    const totalSelected = selectedPixels.length;
+    
+    // Default to hide all purchase related things
+    pixelInfo.style.display = 'none';
+    purchaseForm.style.display = 'none';
+
+    if (totalSelected > 0) { // Pixels selected for purchase
+        // Check if all selected pixels are owned. If so, display info about first one.
+        const allOwned = selectedPixels.every(p => pixels.some(ep => ep.x === p.x && ep.y === p.y));
+        if (allOwned && selectedPixels.length === 1 && singleOwnedPixel) {
+            // It's a single owned pixel clicked, display its info
+            pixelInfo.style.display = 'block';
+            statusTag.textContent = '소유자 있음';
+            statusTag.style.background = '#ff4d4d';
+            ownerNickname.textContent = singleOwnedPixel.owner_nickname;
+            idolGroup.textContent = singleOwnedPixel.idol_group_name;
+            areaIdText.innerText = `Area #${singleOwnedPixel.x/GRID_SIZE}-${singleOwnedPixel.y/GRID_SIZE}`; // Display area info for single owned
+        } else if (allOwned) {
+            // If multiple selected and all are owned, display generic message
+            pixelInfo.style.display = 'block';
+            statusTag.textContent = '선택된 모든 픽셀은 이미 소유자 있음';
+            statusTag.style.background = '#ff4d4d';
+            ownerNickname.textContent = '-';
+            idolGroup.textContent = '-';
+            areaIdText.innerText = `총 ${totalSelected}개의 소유된 픽셀`;
+        }
+        else { // Some or all are available for purchase
+            purchaseForm.style.display = 'block';
+            statusTag.textContent = `${totalSelected} 픽셀 선택됨`;
+            statusTag.style.background = '#00d4ff';
+            areaIdText.innerText = `총 구독료: ₩ ${(totalSelected * 1000).toLocaleString()}`;
+            
+            // Reset nickname/idol inputs for fresh purchase
+            // nicknameInput.value = ''; // Keep previous nickname
+            // idolSelect.value = 'BTS'; // Keep previous idol
+        }
+    } else { // No pixels selected or available single pixel
+        sidePanel.style.display = 'none';
+    }
+    // Update areaIdText to reflect current selection or default
+    if (selectedPixels.length === 0 && !singleOwnedPixel) {
+        areaIdText.innerText = `Area #??`; // Default state
     }
 }
+
 
 subscribeButton.onclick = () => {
     const nickname = nicknameInput.value.trim();
@@ -188,23 +335,27 @@ subscribeButton.onclick = () => {
         alert('닉네임을 입력해주세요.');
         return;
     }
-    if (!selectedPixel) {
+    if (selectedPixels.length === 0) {
         alert('선택된 픽셀이 없습니다.');
         return;
     }
 
     const groupInfo = idolInfo[idolGroupName];
 
-    socket.emit('new_pixel', {
-        x: selectedPixel.x,
-        y: selectedPixel.y,
-        color: groupInfo.color,
-        idol_group_name: idolGroupName,
-        owner_nickname: nickname
+    selectedPixels.forEach(pixel => {
+        socket.emit('new_pixel', {
+            x: pixel.x,
+            y: pixel.y,
+            color: groupInfo.color,
+            idol_group_name: idolGroupName,
+            owner_nickname: nickname
+        });
     });
 
     sidePanel.style.display = 'none';
     nicknameInput.value = '';
+    selectedPixels = []; // Clear selection after purchase
+    draw(); // Redraw to clear selection highlights
 };
 
 canvas.onwheel = (e) => {
