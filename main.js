@@ -3,12 +3,16 @@ const ctx = canvas.getContext('2d');
 const sidePanel = document.getElementById('side-panel');
 const areaIdText = document.getElementById('area-id');
 
+const socket = io();
+
 // 1000만 픽셀 설정 (약 3162 x 3162)
 const WORLD_SIZE = 3162; 
 const GRID_SIZE = 20; // 구독 단위 블록 크기
 let scale = 0.2;
 let offsetX = window.innerWidth / 2 - (WORLD_SIZE * scale) / 2;
 let offsetY = window.innerHeight / 2 - (WORLD_SIZE * scale) / 2;
+
+let pixels = [];
 
 function draw() {
     canvas.width = window.innerWidth;
@@ -34,21 +38,31 @@ function draw() {
         ctx.stroke();
     }
 
-    // Fetch and draw pixels
-    fetch('/api/pixels')
-        .then(response => response.json())
-        .then(pixels => {
-            pixels.forEach(pixel => {
-                ctx.fillStyle = pixel.color;
-                ctx.fillRect(pixel.x, pixel.y, GRID_SIZE, GRID_SIZE);
-                ctx.strokeStyle = '#00d4ff';
-                ctx.strokeRect(pixel.x, pixel.y, GRID_SIZE, GRID_SIZE);
-            });
-        });
+    // Draw all pixels
+    pixels.forEach(pixel => {
+        ctx.fillStyle = pixel.color;
+        ctx.fillRect(pixel.x, pixel.y, GRID_SIZE, GRID_SIZE);
+        ctx.strokeStyle = '#00d4ff';
+        ctx.strokeRect(pixel.x, pixel.y, GRID_SIZE, GRID_SIZE);
+    });
 
     ctx.restore();
     updateMinimap();
 }
+
+// Fetch initial pixels
+fetch('/api/pixels')
+    .then(response => response.json())
+    .then(initialPixels => {
+        pixels = initialPixels;
+        draw();
+    });
+
+socket.on('pixel_update', (pixel) => {
+    pixels.push(pixel);
+    draw();
+});
+
 
 let isDragging = false;
 let lastX, lastY;
@@ -62,7 +76,11 @@ window.onmousemove = (e) => {
     draw();
 };
 window.onmouseup = (e) => {
-    isDragging = false;
+    if (isDragging) {
+        isDragging = false;
+        return;
+    }
+
     const worldX = (e.clientX - offsetX) / scale;
     const worldY = (e.clientY - offsetY) / scale;
 
@@ -71,6 +89,15 @@ window.onmouseup = (e) => {
         const gy = Math.floor(worldY / GRID_SIZE);
         areaIdText.innerText = `Area #${gx}-${gy}`;
         sidePanel.style.display = 'block';
+
+        // Simulate buying a pixel
+        socket.emit('new_pixel', {
+            x: gx * GRID_SIZE,
+            y: gy * GRID_SIZE,
+            color: 'rgba(255, 0, 0, 0.5)',
+            owner: 'New User'
+        });
+
     } else {
         sidePanel.style.display = 'none';
     }
