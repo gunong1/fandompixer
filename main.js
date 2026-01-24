@@ -104,15 +104,6 @@ socket.on('pixel_update', (pixel) => {
 
 // --- User Interactions ---
 
-const debugOverlay = document.getElementById('debug-overlay');
-function debugLog(message) {
-    if(debugOverlay) {
-        debugOverlay.innerHTML += '<br>' + message;
-    }
-    console.log(message);
-}
-
-
 let isDragging = false;
 let lastX, lastY;
 
@@ -126,12 +117,6 @@ window.onmousemove = (e) => {
 };
 
 window.onmouseup = (e) => {
-    if(debugOverlay) {
-        debugOverlay.innerHTML = 'Debug Info:'; // Clear previous logs
-    }
-    debugLog(`--- New Click ---`);
-    debugLog(`isDragging: ${isDragging}`);
-
     if (isDragging) {
         isDragging = false;
         return;
@@ -139,21 +124,14 @@ window.onmouseup = (e) => {
     
     // Ignore clicks inside the side panel to allow interaction with form elements
     if (sidePanel.contains(e.target)) {
-        debugLog(`Click inside side panel. Ignoring.`);
         return;
     }
 
     const worldX = (e.clientX - offsetX) / scale;
     const worldY = (e.clientY - offsetY) / scale;
-    
-    debugLog(`Client Coords: (${e.clientX}, ${e.clientY})`);
-    debugLog(`Offset: (${offsetX.toFixed(2)}, ${offsetY.toFixed(2)})`);
-    debugLog(`Scale: ${scale.toFixed(2)}`);
-    debugLog(`Calculated World Coords: (${worldX.toFixed(2)}, ${worldY.toFixed(2)})`);
 
     // Check if the click was within the world boundaries
     if (worldX >= 0 && worldX < WORLD_SIZE && worldY >= 0 && worldY < WORLD_SIZE) {
-        debugLog('Result: Click is INSIDE world boundaries.');
         const gx = Math.floor(worldX / GRID_SIZE);
         const gy = Math.floor(worldY / GRID_SIZE);
         const clickedX = gx * GRID_SIZE;
@@ -164,13 +142,10 @@ window.onmouseup = (e) => {
         
         updateSidePanel(existingPixel);
         sidePanel.style.display = 'block';
-        debugLog('Action: Showing side panel.');
     } else {
-        debugLog('Result: Click is OUTSIDE world boundaries.');
         // Hide panel if clicked outside the world
         sidePanel.style.display = 'none';
         selectedPixel = null;
-        debugLog('Action: Hiding side panel.');
     }
 };
 
