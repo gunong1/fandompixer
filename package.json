@@ -12,10 +12,10 @@
   "license": "ISC",
   "engines": {
     "node": "20.x"
-  },,
+  },
   "dependencies": {
-    "express": "^5.2.1",
-    "socket.io": "^4.8.3",
-    "sqlite3": "^5.1.7"
+    "better-sqlite3": "^12.6.2",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4"
   }
 }
