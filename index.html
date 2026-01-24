@@ -3,35 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>팬덤 픽셀 (Fandom Pixel) - 100만 픽셀의 전쟁</title>
-    <link rel="stylesheet" href="style.css">
+    <title>팬덤 픽셀 (Fandom Pixel) - 10,000,000 PIXELS</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #05070a; font-family: 'Pretendard', sans-serif; color: white; }
+        canvas { display: block; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+        
+        /* UI 레이어 */
+        .panel { background: rgba(10, 15, 25, 0.9); backdrop-filter: blur(15px); padding: 20px; border-radius: 16px; border: 1px solid rgba(0, 212, 255, 0.2); box-shadow: 0 10px 30px rgba(0,0,0,0.5); pointer-events: auto; }
+        
+        #header { position: absolute; top: 20px; left: 20px; z-index: 10; }
+        h1 { margin: 0; font-size: 24px; color: #00d4ff; text-shadow: 0 0 10px rgba(0,212,255,0.5); }
+        
+        /* 구독 정보 패널 */
+        #side-panel { position: absolute; top: 20px; right: 20px; width: 280px; display: none; z-index: 10; }
+        .subscribe-btn { width: 100%; padding: 14px; background: linear-gradient(45deg, #00d4ff, #0055ff); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 15px; transition: 0.3s; }
+        .subscribe-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 212, 255, 0.4); }
+
+        /* 하단 상태바 */
+        #status-bar { position: absolute; bottom: 20px; left: 20px; display: flex; gap: 10px; }
+        .tag { background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 20px; font-size: 12px; }
+
+        #minimap-container { position: absolute; bottom: 20px; right: 20px; width: 180px; height: 180px; background: rgba(0,0,0,0.5); border: 1px solid #333; }
+        #minimap-view { position: absolute; border: 1px solid #00d4ff; background: rgba(0, 212, 255, 0.1); }
+    </style>
 </head>
 <body>
 
-    <div id="ui-container">
-        <div class="panel">
-            <h1>FANDOM PIXEL</h1>
-            <p>1,000,000 PIXELS TERRITORY</p>
+    <div id="header" class="panel">
+        <h1>FANDOM PIXEL</h1>
+        <div style="font-size: 12px; opacity: 0.6;">10,000,000 PIXELS GLOBAL STAGE</div>
+    </div>
+
+    <div id="side-panel" class="panel">
+        <h2 id="area-id" style="margin: 0 0 10px 0; font-size: 18px;">Area #7721</h2>
+        <div style="margin-bottom: 15px;">
+            <span id="status-tag" style="background: #00d4ff; color: #000; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">구독 가능</span>
         </div>
+        <div style="font-size: 14px; color: #ccc;">
+            <div style="display:flex; justify-content: space-between; margin-bottom: 5px;"><span>월 구독료</span> <span>₩ 9,900</span></div>
+            <div style="display:flex; justify-content: space-between;"><span>현재 구독자</span> <span>0명</span></div>
+        </div>
+        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;">
+        <p style="font-size: 12px; line-height: 1.5; color: #aaa;">이 구역을 구독하여 당신의 아티스트를 위한 영토로 선포하세요.</p>
+        <button class="subscribe-btn" onclick="alert('정기 구독 결제 페이지로 이동합니다.')">구역 구독하기</button>
     </div>
 
-    <div id="selection-panel" class="panel">
-        <h3 id="coord-text" style="margin-top:0">구역 정보</h3>
-        <div class="stat-row"><span>상태:</span> <span style="color:#ff4d4d">입주 가능</span></div>
-        <div class="stat-row"><span>월세:</span> <span>₩ 10,000 / 월</span></div>
-        <p style="font-size:11px; line-height:1.4;">이 구역을 점령하여 팬덤의 로고를 새기세요!</p>
-        <button class="btn-pay" onclick="alert('현금 결제 시스템으로 연결됩니다.')">월세 결제하기</button>
+    <div id="status-bar">
+        <div class="tag">전체 점유율: 12.4%</div>
+        <div class="tag">활성 구독 팬덤: 842개</div>
     </div>
 
-    <div id="info-box" class="panel">
-        <div class="stat-row"><span>현재 접속 팬:</span> <span>1,245명</span></div>
-        <div class="stat-row"><span>점유율 1위:</span> <span style="color:#00d4ff">BTS (21%)</span></div>
-    </div>
-
-    <div id="minimap"><div id="minimap-view"></div></div>
+    <div id="minimap-container"><div id="minimap-view"></div></div>
 
     <canvas id="pixelCanvas"></canvas>
 
-    <script src="main.js"></script>
+    <script>
+        const canvas = document.getElementById('pixelCanvas');
+        const ctx = canvas.getContext('2d');
+        const sidePanel = document.getElementById('side-panel');
+        const areaIdText = document.getElementById('area-id');
+
+        // 1000만 픽셀 설정 (약 3162 x 3162)
+        const WORLD_SIZE = 3162; 
+        const GRID_SIZE = 20; // 구독 단위 블록 크기
+        let scale = 0.2;
+        let offsetX = window.innerWidth / 2 - (WORLD_SIZE * scale) / 2;
+        let offsetY = window.innerHeight / 2 - (WORLD_SIZE * scale) / 2;
+
+        function draw() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            // 배경
+            ctx.fillStyle = '#0a0f19';
+            ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+
+            // 그리드 (확대 시)
+            if (scale > 1.5) {
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(0, 212, 255, 0.1)';
+                for (let i = 0; i <= WORLD_SIZE; i += GRID_SIZE) {
+                    ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE);
+                    ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i);
+                }
+                ctx.stroke();
+            }
+
+            // 샘플 구독 구역 (BTS 구역 예시)
+            ctx.fillStyle = 'rgba(0, 212, 255, 0.3)';
+            ctx.fillRect(1500, 1500, 100, 100);
+            ctx.strokeStyle = '#00d4ff';
+            ctx.strokeRect(1500, 1500, 100, 100);
+
+            ctx.restore();
+            updateMinimap();
+        }
+
+        let isDragging = false;
+        let lastX, lastY;
+
+        canvas.onmousedown = (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; };
+        window.onmousemove = (e) => {
+            if (!isDragging) return;
+            offsetX += e.clientX - lastX;
+            offsetY += e.clientY - lastY;
+            lastX = e.clientX; lastY = e.clientY;
+            draw();
+        };
+        window.onmouseup = (e) => {
+            isDragging = false;
+            const worldX = (e.clientX - offsetX) / scale;
+            const worldY = (e.clientY - offsetY) / scale;
+
+            if (worldX >= 0 && worldX < WORLD_SIZE && worldY >= 0 && worldY < WORLD_SIZE) {
+                const gx = Math.floor(worldX / GRID_SIZE);
+                const gy = Math.floor(worldY / GRID_SIZE);
+                areaIdText.innerText = `Area #${gx}-${gy}`;
+                sidePanel.style.display = 'block';
+            } else {
+                sidePanel.style.display = 'none';
+            }
+        };
+
+        canvas.onwheel = (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const mouseX = e.clientX - offsetX;
+            const mouseY = e.clientY - offsetY;
+            
+            offsetX -= (mouseX * delta - mouseX);
+            offsetY -= (mouseY * delta - mouseY);
+            scale *= delta;
+            scale = Math.min(Math.max(scale, 0.05), 15);
+            draw();
+        };
+
+        function updateMinimap() {
+            const mv = document.getElementById('minimap-view');
+            const mmScale = 180 / WORLD_SIZE;
+            mv.style.width = (window.innerWidth / scale * mmScale) + 'px';
+            mv.style.height = (window.innerHeight / scale * mmScale) + 'px';
+            mv.style.left = (-offsetX / scale * mmScale) + 'px';
+            mv.style.top = (-offsetY / scale * mmScale) + 'px';
+        }
+
+        window.onresize = draw;
+        draw();
+    </script>
 </body>
 </html>
