@@ -12,6 +12,10 @@ const db = new sqlite3.Database('database.db');
 
 app.use(express.static(__dirname));
 
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
+
 app.get('/api/pixels', (req, res) => {
   db.all('SELECT * FROM pixels', [], (err, rows) => {
     if (err) {
