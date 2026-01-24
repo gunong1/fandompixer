@@ -34,11 +34,17 @@ function draw() {
         ctx.stroke();
     }
 
-    // 샘플 구독 구역 (BTS 구역 예시)
-    ctx.fillStyle = 'rgba(0, 212, 255, 0.3)';
-    ctx.fillRect(1500, 1500, 100, 100);
-    ctx.strokeStyle = '#00d4ff';
-    ctx.strokeRect(1500, 1500, 100, 100);
+    // Fetch and draw pixels
+    fetch('/api/pixels')
+        .then(response => response.json())
+        .then(pixels => {
+            pixels.forEach(pixel => {
+                ctx.fillStyle = pixel.color;
+                ctx.fillRect(pixel.x, pixel.y, GRID_SIZE, GRID_SIZE);
+                ctx.strokeStyle = '#00d4ff';
+                ctx.strokeRect(pixel.x, pixel.y, GRID_SIZE, GRID_SIZE);
+            });
+        });
 
     ctx.restore();
     updateMinimap();
