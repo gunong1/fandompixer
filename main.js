@@ -1,5 +1,3 @@
-alert("main.js loaded");
-
 const canvas = document.getElementById('pixelCanvas');
 const ctx = canvas.getContext('2d');
 // Side Panel Elements
@@ -124,10 +122,16 @@ window.onmouseup = (e) => {
         return;
     }
     
+    // Ignore clicks inside the side panel
+    if (sidePanel.contains(e.target)) {
+        return;
+    }
+
     const worldX = (e.clientX - offsetX) / scale;
     const worldY = (e.clientY - offsetY) / scale;
 
-    if (worldX >= 0 && worldX < WORLD_SIZE && worldY >= 0 && worldY < WORLD_SIZE) {
+    // Check if the click was on the canvas and within the world boundaries
+    if (e.target === canvas && worldX >= 0 && worldX < WORLD_SIZE && worldY >= 0 && worldY < WORLD_SIZE) {
         const gx = Math.floor(worldX / GRID_SIZE);
         const gy = Math.floor(worldY / GRID_SIZE);
         const clickedX = gx * GRID_SIZE;
@@ -139,6 +143,7 @@ window.onmouseup = (e) => {
         updateSidePanel(existingPixel);
         sidePanel.style.display = 'block';
     } else {
+        // Hide panel if clicked anywhere else
         sidePanel.style.display = 'none';
         selectedPixel = null;
     }
@@ -224,4 +229,3 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.onresize = draw;
-
