@@ -1,14 +1,37 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hello World</title>
-  <link href='/style.css' rel='stylesheet'>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>팬덤 픽셀 (Fandom Pixel) - 100만 픽셀의 전쟁</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Hello, world!</h1>
-  <button onclick="console.log('hello');">Press me</button>
-  <script defer type="text/javascript" src="/main.js"></script>
+
+    <div id="ui-container">
+        <div class="panel">
+            <h1>FANDOM PIXEL</h1>
+            <p>1,000,000 PIXELS TERRITORY</p>
+        </div>
+    </div>
+
+    <div id="selection-panel" class="panel">
+        <h3 id="coord-text" style="margin-top:0">구역 정보</h3>
+        <div class="stat-row"><span>상태:</span> <span style="color:#ff4d4d">입주 가능</span></div>
+        <div class="stat-row"><span>월세:</span> <span>₩ 10,000 / 월</span></div>
+        <p style="font-size:11px; line-height:1.4;">이 구역을 점령하여 팬덤의 로고를 새기세요!</p>
+        <button class="btn-pay" onclick="alert('현금 결제 시스템으로 연결됩니다.')">월세 결제하기</button>
+    </div>
+
+    <div id="info-box" class="panel">
+        <div class="stat-row"><span>현재 접속 팬:</span> <span>1,245명</span></div>
+        <div class="stat-row"><span>점유율 1위:</span> <span style="color:#00d4ff">BTS (21%)</span></div>
+    </div>
+
+    <div id="minimap"><div id="minimap-view"></div></div>
+
+    <canvas id="pixelCanvas"></canvas>
+
+    <script src="main.js"></script>
 </body>
 </html>
