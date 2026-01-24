@@ -127,6 +127,13 @@ window.onmouseup = (e) => {
         return;
     }
 
+    // Only process clicks that originated on the main canvas element
+    if (e.target !== canvas) {
+        sidePanel.style.display = 'none'; // Hide panel if click is not on canvas
+        selectedPixel = null;
+        return;
+    }
+
     const worldX = (e.clientX - offsetX) / scale;
     const worldY = (e.clientY - offsetY) / scale;
 
