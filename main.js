@@ -136,4 +136,4 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.onresize = draw;
-draw();
+
