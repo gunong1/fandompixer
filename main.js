@@ -198,10 +198,18 @@ window.onmouseup = (e) => {
         isSelectingPixels = false;
         
         // Normalize selection rectangle (ensure positive width/height)
-        const normalizedStartX = Math.min(selectionStartX, selectionEndX);
-        const normalizedStartY = Math.min(selectionStartY, selectionEndY);
-        const normalizedEndX = Math.max(selectionStartX, selectionEndX);
-        const normalizedEndY = Math.max(selectionStartY, selectionEndY);
+        const currentMouseWorldX = (e.clientX - offsetX) / scale;
+        const currentMouseWorldY = (e.clientY - offsetY) / scale;
+
+        // Calculate the exclusive end coordinates for the selection based on mouse-up position
+        // This makes sure the pixel under the mouse at the end of the drag is included.
+        const effectiveEndX = (Math.floor(currentMouseWorldX / GRID_SIZE) + 1) * GRID_SIZE;
+        const effectiveEndY = (Math.floor(currentMouseWorldY / GRID_SIZE) + 1) * GRID_SIZE;
+
+        const normalizedStartX = Math.min(selectionStartX, effectiveEndX - GRID_SIZE);
+        const normalizedStartY = Math.min(selectionStartY, effectiveEndY - GRID_SIZE);
+        const normalizedEndX = Math.max(selectionStartX, effectiveEndX);
+        const normalizedEndY = Math.max(selectionStartY, effectiveEndY);
 
         const rectWidth = normalizedEndX - normalizedStartX;
         const rectHeight = normalizedEndY - normalizedStartY;
