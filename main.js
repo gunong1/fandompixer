@@ -98,11 +98,23 @@ function draw() {
         ctx.fillRect(selectionStartX, selectionStartY, selectionEndX - selectionStartX, selectionEndY - selectionStartY);
     }
     // Draw visual indicator for selected pixels (after selection is finalized)
-    selectedPixels.forEach(p => {
+    if (selectedPixels.length > 0) {
+        // Calculate bounding box for all selected pixels
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        selectedPixels.forEach(p => {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x + GRID_SIZE);
+            maxY = Math.max(maxY, p.y + GRID_SIZE);
+        });
+
+        // Draw the bounding box
         ctx.strokeStyle = 'yellow';
-        ctx.lineWidth = 2; // Changed from 2 / scale to a fixed value for better visibility
-        ctx.strokeRect(p.x, p.y, GRID_SIZE, GRID_SIZE);
-    });
+        ctx.lineWidth = 2; // Fixed to 2 for consistent visibility
+        ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.1)'; // Translucent yellow fill
+        ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
+    }
 
     ctx.restore();
     updateMinimap();
