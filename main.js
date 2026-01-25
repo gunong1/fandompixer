@@ -206,9 +206,6 @@ window.onmouseup = (e) => {
         const rectWidth = normalizedEndX - normalizedStartX;
         const rectHeight = normalizedEndY - normalizedStartY;
 
-        const rectWidth = normalizedEndX - normalizedStartX;
-        const rectHeight = normalizedEndY - normalizedStartY;
-
         selectedPixels = [];
         // If a valid rectangle was drawn (more than a single pixel)
         if (rectWidth > 0 && rectHeight > 0) {
