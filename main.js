@@ -307,52 +307,33 @@ window.onmouseup = (e) => {
         const normalizedEndX = Math.max(selectionStartX, mouseUpPixelStartX);
         const normalizedEndY = Math.max(selectionStartY, mouseUpPixelStartY);
 
-                // The rectWidth and rectHeight calculations should reflect the exclusive upper bound for the loop.
-
-                // The difference between normalizedEndX and normalizedStartX (and Y) already covers the extent of the pixels.
-
-                // So, if normalizedEndX is the start of the last pixel, the loop should go up to (but not including) normalizedEndX + GRID_SIZE.
-
-                const effectiveRectEndX = Math.min(WORLD_SIZE, normalizedEndX + GRID_SIZE);
-                const effectiveRectEndY = Math.min(WORLD_SIZE, normalizedEndY + GRID_SIZE);
-
+        const effectiveRectEndX = Math.min(WORLD_SIZE, normalizedEndX + GRID_SIZE);
+        const effectiveRectEndY = Math.min(WORLD_SIZE, normalizedEndY + GRID_SIZE);
         
+        // --- Implement Request 1: Data Scrubbing - Two-step process ---
+        let rawSelectionCandidates = [];
 
-                selectedPixels = [];
-
-                // If a valid rectangle was drawn (more than a single pixel)
-
-                if (effectiveRectEndX > normalizedStartX && effectiveRectEndY > normalizedStartY) {
-
-                    // Loop from normalizedStartX up to (but not including) effectiveRectEndX
-
-                    for (let x = normalizedStartX; x < effectiveRectEndX; x += GRID_SIZE) { // <--- Changed condition
-
-                        for (let y = normalizedStartY; y < effectiveRectEndY; y += GRID_SIZE) { // <--- Changed condition
-
-                            // Ensure x, y are within WORLD_SIZE and only select pixels
-
-                            if (x >= 0 && x < WORLD_SIZE - EPSILON && y >= 0 && y < WORLD_SIZE - EPSILON) {
-
-                                selectedPixels.push({ x, y });
-
-                            }
-
-                        }
-
-                    }
-
+        // If a valid rectangle was drawn (more than a single pixel)
+        if (effectiveRectEndX > normalizedStartX && effectiveRectEndY > normalizedStartY) {
+            for (let x = normalizedStartX; x < effectiveRectEndX; x += GRID_SIZE) {
+                for (let y = normalizedStartY; y < effectiveRectEndY; y += GRID_SIZE) {
+                    rawSelectionCandidates.push({ x, y });
                 }
-
-         else { // Handle single click or very small drag as a single pixel selection
+            }
+        } else { // Handle single click or very small drag as a single pixel selection
              const worldX = (e.clientX - offsetX) / scale; // Recalculate based on current mouse pos for click
              const worldY = (e.clientY - offsetY) / scale;
-             if (worldX >= 0 && worldX < WORLD_SIZE - EPSILON && worldY >= 0 && worldY < WORLD_SIZE - EPSILON) {
-                 const gx = Math.floor(worldX / GRID_SIZE) * GRID_SIZE;
-                 const gy = Math.floor(worldY / GRID_SIZE) * GRID_SIZE;
-                 selectedPixels.push({ x: gx, y: gy });
-             }
+             // Here we use the already defined currentMouseWorldX/Y after clamping and floor
+             const gx = Math.floor(currentMouseWorldX / GRID_SIZE) * GRID_SIZE;
+             const gy = Math.floor(currentMouseWorldY / GRID_SIZE) * GRID_SIZE;
+             rawSelectionCandidates.push({ x: gx, y: gy });
         }
+        
+        // Filter rawSelectionCandidates to get final selected data within WORLD_SIZE
+        selectedPixels = rawSelectionCandidates.filter(p => 
+            p.x >= 0 && p.x < WORLD_SIZE - EPSILON && 
+            p.y >= 0 && p.y < WORLD_SIZE - EPSILON
+        );
         
 
 
