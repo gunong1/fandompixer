@@ -201,15 +201,17 @@ window.onmouseup = (e) => {
         const currentMouseWorldX = (e.clientX - offsetX) / scale;
         const currentMouseWorldY = (e.clientY - offsetY) / scale;
 
-        // Calculate the exclusive end coordinates for the selection based on mouse-up position
-        // This makes sure the pixel under the mouse at the end of the drag is included.
-        const effectiveEndX = (Math.floor(currentMouseWorldX / GRID_SIZE) + 1) * GRID_SIZE;
-        const effectiveEndY = (Math.floor(currentMouseWorldY / GRID_SIZE) + 1) * GRID_SIZE;
+        // Calculate the GRID_SIZE-aligned start coordinate of the pixel where the mouse currently is
+        const mouseUpPixelStartX = Math.floor(currentMouseWorldX / GRID_SIZE) * GRID_SIZE;
+        const mouseUpPixelStartY = Math.floor(currentMouseWorldY / GRID_SIZE) * GRID_SIZE;
 
-        const normalizedStartX = Math.min(selectionStartX, effectiveEndX - GRID_SIZE);
-        const normalizedStartY = Math.min(selectionStartY, effectiveEndY - GRID_SIZE);
-        const normalizedEndX = Math.max(selectionStartX, effectiveEndX);
-        const normalizedEndY = Math.max(selectionStartY, effectiveEndY);
+        // Determine the overall start (min) and exclusive end (max + GRID_SIZE) coordinates of the selection rectangle
+        const normalizedStartX = Math.min(selectionStartX, mouseUpPixelStartX);
+        const normalizedStartY = Math.min(selectionStartY, mouseUpPixelStartY);
+        
+        // The effective end for the loop (exclusive upper bound) should be one GRID_SIZE beyond the furthest selected pixel's start.
+        const normalizedEndX = Math.max(selectionStartX, mouseUpPixelStartX) + GRID_SIZE;
+        const normalizedEndY = Math.max(selectionStartY, mouseUpPixelStartY) + GRID_SIZE;
 
         const rectWidth = normalizedEndX - normalizedStartX;
         const rectHeight = normalizedEndY - normalizedStartY;
