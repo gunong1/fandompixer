@@ -5,6 +5,7 @@ const sidePanel = document.getElementById('side-panel');
 const areaIdText = document.getElementById('area-id');
 const pixelInfo = document.getElementById('pixel-info');
 const statusTag = document.getElementById('status-tag');
+const selectedPixelCountDiv = document.getElementById('selected-pixel-count'); // New: Element for displaying selected pixel count
 const ownerNickname = document.getElementById('owner-nickname');
 const idolGroup = document.getElementById('idol-group');
 const purchaseForm = document.getElementById('purchase-form');
@@ -308,6 +309,8 @@ function updateSidePanel(singleOwnedPixel = null) {
     purchaseForm.style.display = 'none';
 
     if (totalSelected > 0) {
+        selectedPixelCountDiv.textContent = `총 ${totalSelected} 픽셀 선택됨`;
+        selectedPixelCountDiv.style.display = 'block';
         const ownedInSelection = selectedPixels.filter(p => pixels.some(ep => ep.x === p.x && ep.y === p.y));
         const unownedInSelection = selectedPixels.filter(p => !pixels.some(ep => ep.x === p.x && ep.y === p.y));
 
@@ -339,7 +342,7 @@ function updateSidePanel(singleOwnedPixel = null) {
     } else { // No pixels selected
         sidePanel.style.display = 'none';
         areaIdText.innerText = `Area #??`; // Default state
-    }
+        selectedPixelCountDiv.style.display = 'none';
 }
 
 
