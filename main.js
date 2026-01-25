@@ -328,45 +328,6 @@ window.onmouseup = (e) => {
 };
 
 
-canvas.onclick = (e) => {
-    // This event listener will be primarily for single clicks
-    // Logic for selection is now handled in onmouseup if isSelectingPixels was true
-    // If it was a drag, isDraggingCanvas would have been true.
-    // So if neither is true, it's a regular single click on canvas.
-    if (e.target !== canvas || isDraggingCanvas || isSelectingPixels) { // If not on canvas or part of a drag/selection
-        return;
-    }
-
-    const worldX = (e.clientX - offsetX) / scale;
-    const worldY = (e.clientY - offsetY) / scale;
-
-    if (worldX >= 0 && worldX < WORLD_SIZE && worldY >= 0 && worldY < WORLD_SIZE) {
-        const gx = Math.floor(worldX / GRID_SIZE);
-        const gy = Math.floor(worldY / GRID_SIZE);
-        const clickedX = gx * GRID_SIZE;
-        const clickedY = gy * GRID_SIZE;
-
-        selectedPixels = []; // Clear previous selection
-        const existingPixel = pixels.find(p => p.x === clickedX && p.y === clickedY);
-        
-        if (existingPixel) { // If single clicked an owned pixel, show its info
-            selectedPixels.push(existingPixel); // Temporarily add for panel display
-            updateSidePanel(existingPixel); // Pass the owned pixel to display its info
-            sidePanel.style.display = 'block';
-        } else { // If single clicked an unowned pixel, select it
-            selectedPixels.push({ x: clickedX, y: clickedY });
-            updateSidePanel(); // Update panel with the single selected unowned pixel
-            sidePanel.style.display = 'block';
-        }
-        draw();
-    } else {
-        sidePanel.style.display = 'none';
-        selectedPixels = [];
-        draw();
-    }
-};
-
-
 // Function to get selected pixels within a rectangle (not actively used in current logic but useful)
 function getPixelsInSelection(rectX, rectY, rectWidth, rectHeight) {
     const newSelected = [];
