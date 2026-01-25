@@ -197,30 +197,32 @@ window.onmouseup = (e) => {
     if (isSelectingPixels) { // Finished selecting
         isSelectingPixels = false;
         
-        // Normalize selection rectangle (ensure positive width/height)
         const currentMouseWorldX = (e.clientX - offsetX) / scale;
         const currentMouseWorldY = (e.clientY - offsetY) / scale;
 
-        // Calculate the GRID_SIZE-aligned start coordinate of the pixel where the mouse currently is
+        // Calculate the GRID_SIZE-aligned start coordinate of the pixel where the mouse was released
         const mouseUpPixelStartX = Math.floor(currentMouseWorldX / GRID_SIZE) * GRID_SIZE;
         const mouseUpPixelStartY = Math.floor(currentMouseWorldY / GRID_SIZE) * GRID_SIZE;
 
-        // Determine the overall start (min) and exclusive end (max + GRID_SIZE) coordinates of the selection rectangle
+        // Determine the overall start (min) and end (max) pixel start coordinates of the selection rectangle
         const normalizedStartX = Math.min(selectionStartX, mouseUpPixelStartX);
         const normalizedStartY = Math.min(selectionStartY, mouseUpPixelStartY);
         
-        // The effective end for the loop (exclusive upper bound) should be one GRID_SIZE beyond the furthest selected pixel's start.
-        const normalizedEndX = Math.max(selectionStartX, mouseUpPixelStartX) + GRID_SIZE;
-        const normalizedEndY = Math.max(selectionStartY, mouseUpPixelStartY) + GRID_SIZE;
+        // These are the *start coordinates* of the furthest selected pixel.
+        const normalizedEndX = Math.max(selectionStartX, mouseUpPixelStartX);
+        const normalizedEndY = Math.max(selectionStartY, mouseUpPixelStartY);
 
-        const rectWidth = normalizedEndX - normalizedStartX;
-        const rectHeight = normalizedEndY - normalizedStartY;
+        // The rectWidth and rectHeight should reflect the inclusive range.
+        // So, from normalizedStartX to normalizedEndX (inclusive) means (normalizedEndX - normalizedStartX + GRID_SIZE)
+        const rectWidth = normalizedEndX - normalizedStartX + GRID_SIZE; // Inclusive width
+        const rectHeight = normalizedEndY - normalizedStartY + GRID_SIZE; // Inclusive height
 
         selectedPixels = [];
         // If a valid rectangle was drawn (more than a single pixel)
         if (rectWidth > 0 && rectHeight > 0) {
-            for (let x = normalizedStartX; x < normalizedEndX; x += GRID_SIZE) {
-                for (let y = normalizedStartY; y < normalizedEndY; y += GRID_SIZE) {
+            // Loop from normalizedStartX up to and *including* normalizedEndX
+            for (let x = normalizedStartX; x <= normalizedEndX; x += GRID_SIZE) { // <--- Changed condition
+                for (let y = normalizedStartY; y <= normalizedEndY; y += GRID_SIZE) { // <--- Changed condition
                     // Ensure x, y are within WORLD_SIZE and only select pixels
                     if (x >= 0 && x < WORLD_SIZE && y >= 0 && y < WORLD_SIZE) {
                         selectedPixels.push({ x, y });
