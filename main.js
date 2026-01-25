@@ -56,6 +56,11 @@ function draw() {
     ctx.fillStyle = '#0a0f19';
     ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
 
+    // Apply a clipping path to ensure all subsequent drawings are within WORLD_SIZE
+    ctx.beginPath();
+    ctx.rect(0, 0, WORLD_SIZE, WORLD_SIZE);
+    ctx.clip(); // This will restrict all subsequent drawing operations to this rectangle
+
     // Grid (only when zoomed in)
     if (scale > 1.5) {
         ctx.beginPath();
