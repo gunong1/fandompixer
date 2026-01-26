@@ -1,11 +1,11 @@
-﻿const canvas = document.getElementById('pixelCanvas');
+const canvas = document.getElementById('pixelCanvas');
 const ctx = canvas.getContext('2d');
 // Side Panel Elements
 const sidePanel = document.getElementById('side-panel');
 const areaIdText = document.getElementById('area-id');
 const pixelInfo = document.getElementById('pixel-info');
 const statusTag = document.getElementById('status-tag');
-const selectedPixelCountDiv = document.getElementById('selected-pixel-count'); // New: Element for displaying selected pixel count
+const selectedPixelCountDiv = document.getElementById('selected-pixel-count'); 
 console.log('selectedPixelCountDiv element:', selectedPixelCountDiv); // DEBUG
 const ownerNickname = document.getElementById('owner-nickname');
 const idolGroup = document.getElementById('idol-group');
@@ -14,23 +14,41 @@ const nicknameInput = document.getElementById('nickname-input');
 const idolSelect = document.getElementById('idol-select');
 const subscribeButton = document.getElementById('subscribe-button');
 
-
-
+// NEW: Elements for Owner Stats (Created dynamically if not present, or added here)
+let ownerStatsDiv = document.getElementById('owner-stats');
+if (!ownerStatsDiv) {
+    ownerStatsDiv = document.createElement('div');
+    ownerStatsDiv.id = 'owner-stats';
+    ownerStatsDiv.style.cssText = "display:flex; justify-content: space-between; margin-top: 5px; color: #00d4ff; font-weight: bold;";
+    // Insert it after the idol group info
+    const infoContainer = idolGroup.parentElement.parentElement;
+    infoContainer.appendChild(ownerStatsDiv);
+}
 
 const socket = io();
 
+// Updated to 10M pixels (63240x63240)
 const WORLD_SIZE = 63240;
 const GRID_SIZE = 20;
 const MAX_GRID_START_COORD = Math.floor((WORLD_SIZE - 1) / GRID_SIZE) * GRID_SIZE;
-const EPSILON = 0.001; // Small margin for floating point comparisons
+const EPSILON = 0.001; 
 let scale = 0.2;
-let offsetX = window.innerWidth / 2 - (WORLD_SIZE * scale) / 2;
-let offsetY = window.innerHeight / 2 - (WORLD_SIZE * scale) / 2;
 
-let pixels = [];
-let selectedPixels = []; // Array for multiple selected pixels
-let isDraggingCanvas = false; // Flag for panning the canvas
-let isSelectingPixels = false; // Flag for dragging to select pixels
+// Initial view centered around (1500, 1500) where the initial pixels are
+let offsetX = window.innerWidth / 2 - 1500 * scale;
+let offsetY = window.innerHeight / 2 - 1500 * scale;
+
+// OPTIMIZATION: Use Map for O(1) lookup
+// Key: "x,y", Value: Pixel Object
+let pixelMap = new Map();
+
+// NEW: Cache for User Pixel Counts
+// Key: nickname, Value: count
+let userPixelCounts = new Map();
+
+let selectedPixels = []; 
+let isDraggingCanvas = false; 
+let isSelectingPixels = false; 
 let selectionStartX = 0;
 let selectionStartY = 0;
 let selectionEndX = 0;
@@ -57,10 +75,10 @@ function draw() {
     ctx.fillStyle = '#0a0f19';
     ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
 
-    // Apply a clipping path to ensure all subsequent drawings are within WORLD_SIZE
+    // Apply a clipping path
     ctx.beginPath();
     ctx.rect(0, 0, WORLD_SIZE, WORLD_SIZE);
-    ctx.clip(); // This will restrict all subsequent drawing operations to this rectangle
+    ctx.clip(); 
 
     // Grid (only when zoomed in)
     if (scale > 1.5) {
@@ -73,8 +91,8 @@ function draw() {
         ctx.stroke();
     }
 
-    // Draw all owned pixels
-    pixels.forEach(pixel => {
+    // Draw all owned pixels (Iterate Map values)
+    pixelMap.forEach(pixel => {
         const groupInfo = idolInfo[pixel.idol_group_name] || { color: pixel.color, initials: '?' };
         ctx.fillStyle = groupInfo.color;
         ctx.fillRect(pixel.x, pixel.y, GRID_SIZE, GRID_SIZE);
@@ -97,20 +115,15 @@ function draw() {
         const startX = Math.min(selectionStartX, selectionEndX);
         const startY = Math.min(selectionStartY, selectionEndY);
         
-        // Calculate the raw width and height of the selection area based on pixel grid.
-        // selectionEndX/Y are the top-left corners of the grid cells.
-        // So, to get the full extent, we add GRID_SIZE to the larger coordinate.
         const rawEndX = Math.max(selectionStartX, selectionEndX) + GRID_SIZE;
         const rawEndY = Math.max(selectionStartY, selectionEndY) + GRID_SIZE;
 
-        // Clamp the raw end coordinates to WORLD_SIZE
         const clampedEndX = Math.min(WORLD_SIZE, rawEndX);
         const clampedEndY = Math.min(WORLD_SIZE, rawEndY);
 
         const width = clampedEndX - startX;
         const height = clampedEndY - startY;
 
-        // Adjust for stroke width to keep it entirely within the bounds
         const halfStroke = ctx.lineWidth / 2;
 
         const drawX = startX + halfStroke;
@@ -127,7 +140,6 @@ function draw() {
     }
     // Draw visual indicator for selected pixels (after selection is finalized)
     if (selectedPixels.length > 0) {
-        // Calculate bounding box for all selected pixels
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         selectedPixels.forEach(p => {
             minX = Math.min(minX, p.x);
@@ -138,9 +150,9 @@ function draw() {
 
         // Draw the bounding box
         ctx.strokeStyle = 'yellow';
-        ctx.lineWidth = 2; // Fixed to 2 for consistent visibility
+        ctx.lineWidth = 2; 
         ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
-        ctx.fillStyle = 'rgba(255, 255, 0, 0.1)'; // Translucent yellow fill
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.1)'; 
         ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
     }
 
@@ -156,19 +168,45 @@ fetch('/api/pixels')
         return response.json();
     })
     .then(initialPixels => {
-        pixels = initialPixels;
+        // Convert array to Map and Populate User Pixel Counts
+        initialPixels.forEach(p => {
+            pixelMap.set(`${p.x},${p.y}`, p);
+            
+            // Stats
+            const count = userPixelCounts.get(p.owner_nickname) || 0;
+            userPixelCounts.set(p.owner_nickname, count + 1);
+        });
         draw();
     })
     .catch(e => console.error('Error fetching initial pixels:', e));
 
 socket.on('pixel_update', (pixel) => {
-    const index = pixels.findIndex(p => p.x === pixel.x && p.y === pixel.y);
-    if (index > -1) {
-        pixels[index] = pixel;
-    } else {
-        pixels.push(pixel);
+    // Check old owner to decrement count
+    const key = `${pixel.x},${pixel.y}`;
+    const oldPixel = pixelMap.get(key);
+    
+    if (oldPixel && oldPixel.owner_nickname) {
+        const oldOwner = oldPixel.owner_nickname;
+        const oldCount = userPixelCounts.get(oldOwner) || 0;
+        if (oldCount > 0) {
+            userPixelCounts.set(oldOwner, oldCount - 1);
+        }
     }
+
+    // Update Map
+    pixelMap.set(key, pixel);
+
+    // Increment new owner count
+    const newOwner = pixel.owner_nickname;
+    const newCount = userPixelCounts.get(newOwner) || 0;
+    userPixelCounts.set(newOwner, newCount + 1);
+
     draw();
+    
+    // Update panel if specific pixel is selected
+    if (selectedPixels.length === 1 && selectedPixels[0].x === pixel.x && selectedPixels[0].y === pixel.y) {
+       updateSidePanel(pixel);
+    }
 });
 
 
@@ -190,31 +228,27 @@ canvas.onmousedown = (e) => {
     worldX = Math.max(0, Math.min(worldX, WORLD_SIZE));
     worldY = Math.max(0, Math.min(worldY, WORLD_SIZE));
     
-    // Apply Math.floor to snap to integer world coordinate as per Request 3
     worldX = Math.floor(worldX);
     worldY = Math.floor(worldY);
 
-    // If Ctrl key is pressed, start panning the canvas
     if (e.ctrlKey) {
         isDraggingCanvas = true;
-        isSelectingPixels = false; // Ensure selection mode is off
-    } else { // Normal left-click, start selection drag
+        isSelectingPixels = false; 
+    } else { 
         isSelectingPixels = true;
-        isDraggingCanvas = false; // Ensure dragging mode is off
+        isDraggingCanvas = false; 
         selectionStartX = Math.floor(worldX / GRID_SIZE) * GRID_SIZE;
         selectionStartY = Math.floor(worldY / GRID_SIZE) * GRID_SIZE;
 
-        // ?대옩?? 罹붾쾭??寃쎄퀎瑜?踰쀬뼱?섏? ?딅룄濡?(0 ?댁긽, MAX_GRID_START_COORD濡?
         selectionStartX = Math.max(0, Math.min(selectionStartX, MAX_GRID_START_COORD));
         selectionStartY = Math.max(0, Math.min(selectionStartY, MAX_GRID_START_COORD));
 
-        // Add clamping (This is redundant after the above line, but keeping for consistency if original code had a duplicate reason)
         selectionStartX = Math.max(0, Math.min(selectionStartX, MAX_GRID_START_COORD));
         selectionStartY = Math.max(0, Math.min(selectionStartY, MAX_GRID_START_COORD));
-        selectionEndX = selectionStartX; // Initialize end with start
+        selectionEndX = selectionStartX; 
         selectionEndY = selectionStartY;
-        selectedPixels = []; // Clear previous selection
-        sidePanel.style.display = 'none'; // Hide panel during selection
+        selectedPixels = []; 
+        sidePanel.style.display = 'none'; 
     }
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
@@ -241,32 +275,30 @@ window.onmousemove = (e) => {
         worldX = Math.max(0, Math.min(worldX, WORLD_SIZE));
         worldY = Math.max(0, Math.min(worldY, WORLD_SIZE));
 
-        // Apply Math.floor to snap to integer world coordinate as per Request 3
         worldX = Math.floor(worldX);
         worldY = Math.floor(worldY);
         
         selectionEndX = Math.floor(worldX / GRID_SIZE) * GRID_SIZE;
         selectionEndY = Math.floor(worldY / GRID_SIZE) * GRID_SIZE;
 
-        // ?대옩?? 罹붾쾭??寃쎄퀎瑜?踰쀬뼱?섏? ?딅룄濡?
         selectionEndX = Math.max(0, Math.min(selectionEndX, MAX_GRID_START_COORD));
         selectionEndY = Math.max(0, Math.min(selectionEndY, MAX_GRID_START_COORD));
+        
+        // OPTIMIZATION: Do NOT calculate selectedPixels here. 
         draw();
     }
 };
 
 window.onmouseup = (e) => {
 
-    if (isDraggingCanvas) { // Finished dragging
+    if (isDraggingCanvas) { 
         isDraggingCanvas = false;
-        // After drag, if no selection happened, hide panel
         if (selectedPixels.length === 0) {
             sidePanel.style.display = 'none';
         }
-        return; // Don't proceed to click/selection logic if it was a pan drag
+        return; 
     }
 
-    // Ignore clicks inside the side panel to allow interaction with form elements
     if (sidePanel.contains(e.target)) {
         return;
     }
@@ -288,47 +320,34 @@ window.onmouseup = (e) => {
         currentMouseWorldX = Math.max(0, Math.min(currentMouseWorldX, WORLD_SIZE));
         currentMouseWorldY = Math.max(0, Math.min(currentMouseWorldY, WORLD_SIZE));
 
-        // Apply Math.floor to snap to integer world coordinate
         currentMouseWorldX = Math.floor(currentMouseWorldX);
         currentMouseWorldY = Math.floor(currentMouseWorldY);
 
-        // Calculate the GRID_SIZE-aligned start coordinate of the pixel where the mouse was released
         let mouseUpPixelStartX = Math.floor(currentMouseWorldX / GRID_SIZE) * GRID_SIZE;
         let mouseUpPixelStartY = Math.floor(currentMouseWorldY / GRID_SIZE) * GRID_SIZE;
 
-        // ?대옩?? 罹붾쾭??寃쎄퀎瑜?踰쀬뼱?섏? ?딅룄濡?(0 ?댁긽, MAX_GRID_START_COORD濡?
         mouseUpPixelStartX = Math.max(0, Math.min(mouseUpPixelStartX, MAX_GRID_START_COORD));
         mouseUpPixelStartY = Math.max(0, Math.min(mouseUpPixelStartY, MAX_GRID_START_COORD));
 
-        // Determine the overall start (min) and end (max) pixel start coordinates of the selection rectangle
         const normalizedStartX = Math.min(selectionStartX, mouseUpPixelStartX);
         const normalizedStartY = Math.min(selectionStartY, mouseUpPixelStartY);
         
-        // These are the *start coordinates* of the furthest selected pixel.
         const normalizedEndX = Math.max(selectionStartX, mouseUpPixelStartX);
         const normalizedEndY = Math.max(selectionStartY, mouseUpPixelStartY);
 
-        // Derive selectionBox coordinates from normalized values.
-        // selectionBox.x/y are top-left of the selected region.
-        // selectionBox.width/height are the dimensions of the selected region.
-        // Note: normalizedEndX/Y are the start coords of the furthest pixel, so add GRID_SIZE for width/height.
         const selectionBoxX = normalizedStartX;
         const selectionBoxY = normalizedStartY;
         const selectionBoxWidth = (normalizedEndX - normalizedStartX) + GRID_SIZE;
         const selectionBoxHeight = (normalizedEndY - normalizedStartY) + GRID_SIZE;
 
         // --- Start of User's Provided Intersection Method Logic ---
+        // OPTIMIZATION: Calculation happens ONLY here on mouseup
 
-        // [1] ?쒕옒洹명븳 ?ш컖?뺤쓽 醫뚰몴 (Raw Input)
-        // ?뚯닔??踰꾨┝(floor) 泥섎━濡??뺤닔 醫뚰몴 ?뺣낫
         let rawStartX = Math.floor(selectionBoxX);
         let rawEndX = Math.floor(selectionBoxX + selectionBoxWidth);
         let rawStartY = Math.floor(selectionBoxY);
         let rawEndY = Math.floor(selectionBoxY + selectionBoxHeight);
 
-        // [2] 諛섎났臾몄쓽 踰붿쐞瑜?罹붾쾭???덉そ?쇰줈 媛뺤젣 媛?먭린 (?듭떖 濡쒖쭅!)
-        // Math.max(0, ...) : 0蹂대떎 ?묒? 怨??쇱そ/?꾩そ 諛붽묑)? 0?쇰줈 ?뚯뼱?щ┝
-        // Math.min(WORLD_SIZE, ...) : ??WORLD_SIZE)???섎뒗 怨녹? WORLD_SIZE濡??뚯뼱?대┝ (諛고????곹븳)
         const loopStartX = Math.max(0, rawStartX);
         const loopEndX = Math.min(WORLD_SIZE, rawEndX);
         const loopStartY = Math.max(0, rawStartY);
@@ -336,22 +355,16 @@ window.onmouseup = (e) => {
 
         const validPixels = [];
 
-        // [3] 蹂댁젙??踰붿쐞(Intersection) ?댁뿉?쒕쭔 諛섎났臾??ㅽ뻾
         // Iterate by GRID_SIZE
         for (let y = loopStartY; y < loopEndY; y += GRID_SIZE) {
             for (let x = loopStartX; x < loopEndX; x += GRID_SIZE) {
-                // ???덉뿉??臾댁“嫄??좏슚??醫뚰몴留??ㅼ뼱??
                 validPixels.push({ x, y });
             }
         }
 
-        // [4] 寃곌낵 ???
         selectedPixels = validPixels;
 
         // --- End of User's Provided Intersection Method Logic ---
-
-        
-
 
         updateSidePanel(); // Update panel based on selectedPixels
         if (selectedPixels.length > 0) {
@@ -363,9 +376,8 @@ window.onmouseup = (e) => {
         return; // Don't proceed to regular click logic
     }
     
-    // If not dragging and not selecting, then it's a regular click (possibly outside canvas)
-    // This part handles single clicks on owned pixels or clicks outside everything to clear selection
-    if (e.target === canvas) { // Clicked directly on canvas (not part of drag/selection)
+    // Normal Click Handling
+    if (e.target === canvas) { 
         const worldX = (e.clientX - offsetX) / scale;
         const worldY = (e.clientY - offsetY) / scale;
 
@@ -375,25 +387,26 @@ window.onmouseup = (e) => {
             const clickedX = gx * GRID_SIZE;
             const clickedY = gy * GRID_SIZE;
 
-            selectedPixels = []; // Clear previous selection
-            const existingPixel = pixels.find(p => p.x === clickedX && p.y === clickedY);
+            selectedPixels = []; 
+            // OPTIMIZATION: O(1) lookup
+            const existingPixel = pixelMap.get(`${clickedX},${clickedY}`);
             
-            if (existingPixel) { // If single clicked an owned pixel, show its info
-                selectedPixels.push(existingPixel); // Temporarily add for panel display
-                updateSidePanel(existingPixel); // Pass the owned pixel to display its info
+            if (existingPixel) { 
+                selectedPixels.push(existingPixel); 
+                updateSidePanel(existingPixel); 
                 sidePanel.style.display = 'block';
-            } else { // If single clicked an unowned pixel, select it
+            } else { 
                 selectedPixels.push({ x: clickedX, y: clickedY });
-                updateSidePanel(); // Update panel with the single selected unowned pixel
+                updateSidePanel(); 
                 sidePanel.style.display = 'block';
             }
             draw();
-        } else { // Click on canvas but outside world boundaries
+        } else { 
             sidePanel.style.display = 'none';
             selectedPixels = [];
             draw();
         }
-    } else if (!sidePanel.contains(e.target)) { // Clicked outside canvas AND outside side panel
+    } else if (!sidePanel.contains(e.target)) { 
         sidePanel.style.display = 'none';
         selectedPixels = [];
         draw();
@@ -401,29 +414,7 @@ window.onmouseup = (e) => {
 };
 
 
-// Function to get selected pixels within a rectangle (not actively used in current logic but useful)
-function getPixelsInSelection(rectX, rectY, rectWidth, rectHeight) {
-    const newSelected = [];
-    for (let x = rectX; x < rectX + rectWidth; x += GRID_SIZE) {
-        for (let y = rectY; y < rectY + rectHeight; y += GRID_SIZE) {
-            // Ensure x, y are within WORLD_SIZE and only select unowned pixels
-            if (x >= 0 && x < WORLD_SIZE && y >= 0 && y < WORLD_SIZE) {
-                const existingPixel = pixels.find(p => p.x === x && p.y === y);
-                if (!existingPixel) {
-                    newSelected.push({ x, y });
-                }
-            }
-        }
-    }
-    return newSelected;
-}
-
-
-// Modified updateSidePanel to handle multiple selections
 function updateSidePanel(singleOwnedPixel = null) {
-    console.log('updateSidePanel called.'); // DEBUG
-    console.log('Current selectedPixels length:', selectedPixels.length); // DEBUG
-    console.log('selectedPixelCountDiv inside updateSidePanel:', selectedPixelCountDiv); // DEBUG
 
     // --- Implement Request 1: Data Filtering for selectedPixels ---
     const validSelectedPixels = selectedPixels.filter(p => 
@@ -431,44 +422,64 @@ function updateSidePanel(singleOwnedPixel = null) {
     );
     const totalSelected = validSelectedPixels.length;
     
-    // Default to hide all purchase related things
     pixelInfo.style.display = 'none';
     purchaseForm.style.display = 'none';
 
-    if (totalSelected > 0) {
-        selectedPixelCountDiv.textContent = `珥?${totalSelected} ?쎌? ?좏깮??;
-        selectedPixelCountDiv.style.display = 'block';
-        const ownedInSelection = validSelectedPixels.filter(p => pixels.some(ep => ep.x === p.x && ep.y === p.y));
-        const unownedInSelection = validSelectedPixels.filter(p => !pixels.some(ep => ep.x === p.x && ep.y === p.y));
+    // Hide stats by default
+    if(ownerStatsDiv) ownerStatsDiv.style.display = 'none';
 
-        if (unownedInSelection.length > 0) { // There are unowned pixels in the selection
+    if (totalSelected > 0) {
+        selectedPixelCountDiv.textContent = `총 ${totalSelected} 픽셀 선택됨`;
+        selectedPixelCountDiv.style.display = 'block';
+        
+        // OPTIMIZATION: fast check using Map.has() O(1)
+        // FIX: Retrieving full pixel objects allows us to display owner info correctly
+        const ownedInSelection = validSelectedPixels
+            .filter(p => pixelMap.has(`${p.x},${p.y}`))
+            .map(p => pixelMap.get(`${p.x},${p.y}`));
+
+        const unownedInSelection = validSelectedPixels.filter(p => !pixelMap.has(`${p.x},${p.y}`));
+
+        if (unownedInSelection.length > 0) { // There are unowned pixels
             purchaseForm.style.display = 'block';
             if (ownedInSelection.length > 0) {
-                statusTag.textContent = `${unownedInSelection.length} ?쎌? 援щℓ 媛??(${ownedInSelection.length}媛??뚯쑀??`;
+                statusTag.textContent = `${unownedInSelection.length} 픽셀 구매 가능 (${ownedInSelection.length}개 소유됨)`;
                 statusTag.style.background = '#ff9800'; // Orange for mixed
             } else {
-                statusTag.textContent = `${totalSelected} ?쎌? ?좏깮??;
+                statusTag.textContent = `${totalSelected} 픽셀 선택됨`;
                 statusTag.style.background = '#00d4ff'; // Blue for all unowned
             }
-            areaIdText.innerText = `珥?援щ룆猷? ??${(unownedInSelection.length * 1000).toLocaleString()}`;
+            areaIdText.innerText = `총 구독료: ₩ ${(unownedInSelection.length * 1000).toLocaleString()}`;
         } else if (ownedInSelection.length > 0) { // All selected pixels are owned
             pixelInfo.style.display = 'block';
-            statusTag.textContent = '?좏깮??紐⑤뱺 ?쎌?? ?대? ?뚯쑀???덉쓬';
+            statusTag.textContent = '선택된 모든 픽셀은 이미 소유자 있음';
             statusTag.style.background = '#ff4d4d'; // Red for all owned
             ownerNickname.textContent = '-';
             idolGroup.textContent = '-';
-            areaIdText.innerText = `珥?${totalSelected}媛쒖쓽 ?뚯쑀???쎌?`;
+            areaIdText.innerText = `총 ${totalSelected}개의 소유된 픽셀`;
             
-            // If it's a single owned pixel from a direct click, show its specific info
-            if (ownedInSelection.length === 1 && singleOwnedPixel && ownedInSelection[0].x === singleOwnedPixel.x && ownedInSelection[0].y === singleOwnedPixel.y) {
-                ownerNickname.textContent = singleOwnedPixel.owner_nickname;
-                idolGroup.textContent = singleOwnedPixel.idol_group_name;
-                areaIdText.innerText = `Area #${singleOwnedPixel.x/GRID_SIZE}-${singleOwnedPixel.y/GRID_SIZE}`;
+            // FIX: Show info if exactly one owned pixel is selected, regardless of how it was selected
+            if (ownedInSelection.length === 1) {
+                const p = ownedInSelection[0];
+                ownerNickname.textContent = p.owner_nickname;
+                idolGroup.textContent = p.idol_group_name;
+                areaIdText.innerText = `Area #${p.x/GRID_SIZE}-${p.y/GRID_SIZE}`;
+
+                // --- NEW: Calculate and Show Owner Stats ---
+                const ownerCount = userPixelCounts.get(p.owner_nickname) || 0;
+                // Calculate Market Share (Start with share of occupied world?)
+                const totalOccupied = pixelMap.size;
+                const marketShare = totalOccupied > 0 ? ((ownerCount / totalOccupied) * 100).toFixed(2) : 0;
+                
+                if (ownerStatsDiv) {
+                    ownerStatsDiv.innerHTML = `<span>보유 정보</span> <span>${ownerCount.toLocaleString()}개 (${marketShare}%)</span>`;
+                    ownerStatsDiv.style.display = 'flex';
+                }
             }
         }
     } else { // No pixels selected
         sidePanel.style.display = 'none';
-        areaIdText.innerText = `Area #??`; // Default state
+        areaIdText.innerText = `Area #??`; 
         selectedPixelCountDiv.style.display = 'none';
     }
 }
@@ -479,21 +490,20 @@ subscribeButton.onclick = () => {
     const idolGroupName = idolSelect.value;
 
     if (!nickname) {
-        alert('?됰꽕?꾩쓣 ?낅젰?댁＜?몄슂.');
+        alert('닉네임을 입력해주세요.');
         return;
     }
     if (selectedPixels.length === 0) {
-        alert('?좏깮???쎌????놁뒿?덈떎.');
+        alert('선택된 픽셀이 없습니다.');
         return;
     }
 
-    // --- Implement Request 1: Data Filtering for selectedPixels before sending to server ---
     const pixelsToSend = selectedPixels.filter(p => 
         p.x >= 0 && p.x < WORLD_SIZE - EPSILON && p.y >= 0 && p.y < WORLD_SIZE - EPSILON
     );
 
     if (pixelsToSend.length === 0) {
-        alert('?좏슚???쎌????좏깮?섏? ?딆븯?듬땲?? 罹붾쾭??踰붿쐞 ?댁쓽 ?쎌????좏깮?댁＜?몄슂.');
+        alert('유효한 픽셀이 선택되지 않았습니다. 캔버스 범위 내의 픽셀을 선택해주세요.');
         return;
     }
 
@@ -511,8 +521,8 @@ subscribeButton.onclick = () => {
 
     sidePanel.style.display = 'none';
     nicknameInput.value = '';
-    selectedPixels = []; // Clear selection after purchase
-    draw(); // Redraw to clear selection highlights
+    selectedPixels = []; 
+    draw(); 
 };
 
 canvas.onwheel = (e) => {
@@ -524,7 +534,7 @@ canvas.onwheel = (e) => {
     offsetX -= (mouseX * delta - mouseX);
     offsetY -= (mouseY * delta - mouseY);
     scale *= delta;
-    scale = Math.min(Math.max(scale, 0.05), 20);
+    scale = Math.min(Math.max(scale, 0.0005), 20);
     draw();
 };
 
@@ -540,9 +550,14 @@ function updateMinimap() {
 window.addEventListener('keydown', (e) => {
     if (e.code === 'Space') {
         e.preventDefault();
-        scale = 0.2;
-        offsetX = window.innerWidth / 2 - (WORLD_SIZE * scale) / 2;
-        offsetY = window.innerHeight / 2 - (WORLD_SIZE * scale) / 2;
+        const scaleX = window.innerWidth / WORLD_SIZE;
+        const scaleY = window.innerHeight / WORLD_SIZE;
+        scale = Math.min(scaleX, scaleY); 
+        
+        // Center the world
+        offsetX = (window.innerWidth - WORLD_SIZE * scale) / 2;
+        offsetY = (window.innerHeight - WORLD_SIZE * scale) / 2;
+        
         draw();
     }
 });
