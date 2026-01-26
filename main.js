@@ -1,4 +1,4 @@
-const canvas = document.getElementById('pixelCanvas');
+﻿const canvas = document.getElementById('pixelCanvas');
 const ctx = canvas.getContext('2d');
 // Side Panel Elements
 const sidePanel = document.getElementById('side-panel');
@@ -19,7 +19,7 @@ const subscribeButton = document.getElementById('subscribe-button');
 
 const socket = io();
 
-const WORLD_SIZE = 3162;
+const WORLD_SIZE = 63240;
 const GRID_SIZE = 20;
 const MAX_GRID_START_COORD = Math.floor((WORLD_SIZE - 1) / GRID_SIZE) * GRID_SIZE;
 const EPSILON = 0.001; // Small margin for floating point comparisons
@@ -204,7 +204,7 @@ canvas.onmousedown = (e) => {
         selectionStartX = Math.floor(worldX / GRID_SIZE) * GRID_SIZE;
         selectionStartY = Math.floor(worldY / GRID_SIZE) * GRID_SIZE;
 
-        // 클램핑: 캔버스 경계를 벗어나지 않도록 (0 이상, MAX_GRID_START_COORD로)
+        // ?대옩?? 罹붾쾭??寃쎄퀎瑜?踰쀬뼱?섏? ?딅룄濡?(0 ?댁긽, MAX_GRID_START_COORD濡?
         selectionStartX = Math.max(0, Math.min(selectionStartX, MAX_GRID_START_COORD));
         selectionStartY = Math.max(0, Math.min(selectionStartY, MAX_GRID_START_COORD));
 
@@ -248,7 +248,7 @@ window.onmousemove = (e) => {
         selectionEndX = Math.floor(worldX / GRID_SIZE) * GRID_SIZE;
         selectionEndY = Math.floor(worldY / GRID_SIZE) * GRID_SIZE;
 
-        // 클램핑: 캔버스 경계를 벗어나지 않도록
+        // ?대옩?? 罹붾쾭??寃쎄퀎瑜?踰쀬뼱?섏? ?딅룄濡?
         selectionEndX = Math.max(0, Math.min(selectionEndX, MAX_GRID_START_COORD));
         selectionEndY = Math.max(0, Math.min(selectionEndY, MAX_GRID_START_COORD));
         draw();
@@ -296,7 +296,7 @@ window.onmouseup = (e) => {
         let mouseUpPixelStartX = Math.floor(currentMouseWorldX / GRID_SIZE) * GRID_SIZE;
         let mouseUpPixelStartY = Math.floor(currentMouseWorldY / GRID_SIZE) * GRID_SIZE;
 
-        // 클램핑: 캔버스 경계를 벗어나지 않도록 (0 이상, MAX_GRID_START_COORD로)
+        // ?대옩?? 罹붾쾭??寃쎄퀎瑜?踰쀬뼱?섏? ?딅룄濡?(0 ?댁긽, MAX_GRID_START_COORD濡?
         mouseUpPixelStartX = Math.max(0, Math.min(mouseUpPixelStartX, MAX_GRID_START_COORD));
         mouseUpPixelStartY = Math.max(0, Math.min(mouseUpPixelStartY, MAX_GRID_START_COORD));
 
@@ -319,16 +319,16 @@ window.onmouseup = (e) => {
 
         // --- Start of User's Provided Intersection Method Logic ---
 
-        // [1] 드래그한 사각형의 좌표 (Raw Input)
-        // 소수점 버림(floor) 처리로 정수 좌표 확보
+        // [1] ?쒕옒洹명븳 ?ш컖?뺤쓽 醫뚰몴 (Raw Input)
+        // ?뚯닔??踰꾨┝(floor) 泥섎━濡??뺤닔 醫뚰몴 ?뺣낫
         let rawStartX = Math.floor(selectionBoxX);
         let rawEndX = Math.floor(selectionBoxX + selectionBoxWidth);
         let rawStartY = Math.floor(selectionBoxY);
         let rawEndY = Math.floor(selectionBoxY + selectionBoxHeight);
 
-        // [2] 반복문의 범위를 캔버스 안쪽으로 강제 가두기 (핵심 로직!)
-        // Math.max(0, ...) : 0보다 작은 곳(왼쪽/위쪽 바깥)은 0으로 끌어올림
-        // Math.min(WORLD_SIZE, ...) : 끝(WORLD_SIZE)을 넘는 곳은 WORLD_SIZE로 끌어내림 (배타적 상한)
+        // [2] 諛섎났臾몄쓽 踰붿쐞瑜?罹붾쾭???덉そ?쇰줈 媛뺤젣 媛?먭린 (?듭떖 濡쒖쭅!)
+        // Math.max(0, ...) : 0蹂대떎 ?묒? 怨??쇱そ/?꾩そ 諛붽묑)? 0?쇰줈 ?뚯뼱?щ┝
+        // Math.min(WORLD_SIZE, ...) : ??WORLD_SIZE)???섎뒗 怨녹? WORLD_SIZE濡??뚯뼱?대┝ (諛고????곹븳)
         const loopStartX = Math.max(0, rawStartX);
         const loopEndX = Math.min(WORLD_SIZE, rawEndX);
         const loopStartY = Math.max(0, rawStartY);
@@ -336,16 +336,16 @@ window.onmouseup = (e) => {
 
         const validPixels = [];
 
-        // [3] 보정된 범위(Intersection) 내에서만 반복문 실행
+        // [3] 蹂댁젙??踰붿쐞(Intersection) ?댁뿉?쒕쭔 諛섎났臾??ㅽ뻾
         // Iterate by GRID_SIZE
         for (let y = loopStartY; y < loopEndY; y += GRID_SIZE) {
             for (let x = loopStartX; x < loopEndX; x += GRID_SIZE) {
-                // 이 안에는 무조건 유효한 좌표만 들어옴
+                // ???덉뿉??臾댁“嫄??좏슚??醫뚰몴留??ㅼ뼱??
                 validPixels.push({ x, y });
             }
         }
 
-        // [4] 결과 저장
+        // [4] 寃곌낵 ???
         selectedPixels = validPixels;
 
         // --- End of User's Provided Intersection Method Logic ---
@@ -436,7 +436,7 @@ function updateSidePanel(singleOwnedPixel = null) {
     purchaseForm.style.display = 'none';
 
     if (totalSelected > 0) {
-        selectedPixelCountDiv.textContent = `총 ${totalSelected} 픽셀 선택됨`;
+        selectedPixelCountDiv.textContent = `珥?${totalSelected} ?쎌? ?좏깮??;
         selectedPixelCountDiv.style.display = 'block';
         const ownedInSelection = validSelectedPixels.filter(p => pixels.some(ep => ep.x === p.x && ep.y === p.y));
         const unownedInSelection = validSelectedPixels.filter(p => !pixels.some(ep => ep.x === p.x && ep.y === p.y));
@@ -444,20 +444,20 @@ function updateSidePanel(singleOwnedPixel = null) {
         if (unownedInSelection.length > 0) { // There are unowned pixels in the selection
             purchaseForm.style.display = 'block';
             if (ownedInSelection.length > 0) {
-                statusTag.textContent = `${unownedInSelection.length} 픽셀 구매 가능 (${ownedInSelection.length}개 소유됨)`;
+                statusTag.textContent = `${unownedInSelection.length} ?쎌? 援щℓ 媛??(${ownedInSelection.length}媛??뚯쑀??`;
                 statusTag.style.background = '#ff9800'; // Orange for mixed
             } else {
-                statusTag.textContent = `${totalSelected} 픽셀 선택됨`;
+                statusTag.textContent = `${totalSelected} ?쎌? ?좏깮??;
                 statusTag.style.background = '#00d4ff'; // Blue for all unowned
             }
-            areaIdText.innerText = `총 구독료: ₩ ${(unownedInSelection.length * 1000).toLocaleString()}`;
+            areaIdText.innerText = `珥?援щ룆猷? ??${(unownedInSelection.length * 1000).toLocaleString()}`;
         } else if (ownedInSelection.length > 0) { // All selected pixels are owned
             pixelInfo.style.display = 'block';
-            statusTag.textContent = '선택된 모든 픽셀은 이미 소유자 있음';
+            statusTag.textContent = '?좏깮??紐⑤뱺 ?쎌?? ?대? ?뚯쑀???덉쓬';
             statusTag.style.background = '#ff4d4d'; // Red for all owned
             ownerNickname.textContent = '-';
             idolGroup.textContent = '-';
-            areaIdText.innerText = `총 ${totalSelected}개의 소유된 픽셀`;
+            areaIdText.innerText = `珥?${totalSelected}媛쒖쓽 ?뚯쑀???쎌?`;
             
             // If it's a single owned pixel from a direct click, show its specific info
             if (ownedInSelection.length === 1 && singleOwnedPixel && ownedInSelection[0].x === singleOwnedPixel.x && ownedInSelection[0].y === singleOwnedPixel.y) {
@@ -479,11 +479,11 @@ subscribeButton.onclick = () => {
     const idolGroupName = idolSelect.value;
 
     if (!nickname) {
-        alert('닉네임을 입력해주세요.');
+        alert('?됰꽕?꾩쓣 ?낅젰?댁＜?몄슂.');
         return;
     }
     if (selectedPixels.length === 0) {
-        alert('선택된 픽셀이 없습니다.');
+        alert('?좏깮???쎌????놁뒿?덈떎.');
         return;
     }
 
@@ -493,7 +493,7 @@ subscribeButton.onclick = () => {
     );
 
     if (pixelsToSend.length === 0) {
-        alert('유효한 픽셀이 선택되지 않았습니다. 캔버스 범위 내의 픽셀을 선택해주세요.');
+        alert('?좏슚???쎌????좏깮?섏? ?딆븯?듬땲?? 罹붾쾭??踰붿쐞 ?댁쓽 ?쎌????좏깮?댁＜?몄슂.');
         return;
     }
 
