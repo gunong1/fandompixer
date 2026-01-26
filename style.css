@@ -1,0 +1,22 @@
+body { margin: 0; overflow: hidden; background-color: #0b0e14; font-family: 'Pretendard', sans-serif; color: white; }
+canvas { display: block; cursor: crosshair; }
+
+/* UI 레이어 */
+#ui-container { position: absolute; top: 20px; left: 20px; z-index: 10; pointer-events: none; }
+.panel { background: rgba(20, 24, 33, 0.85); backdrop-filter: blur(10px); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); pointer-events: auto; }
+
+h1 { margin: 0 0 5px 0; font-size: 20px; color: #00d4ff; text-transform: uppercase; letter-spacing: 2px; }
+p { margin: 0; font-size: 12px; opacity: 0.7; }
+
+/* 상태창 */
+#info-box { position: absolute; bottom: 20px; left: 20px; width: 250px; }
+.stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
+
+/* 선택 구역 정보 */
+#selection-panel { position: absolute; top: 20px; right: 20px; width: 220px; display: none; }
+.btn-pay { width: 100%; padding: 10px; background: #00d4ff; color: black; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+.btn-pay:hover { background: #00b8e6; }
+
+/* 미니맵 */
+#minimap { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); }
+#minimap-view { position: absolute; border: 1px solid #00d4ff; background: rgba(0, 212, 255, 0.1); }
