@@ -63,24 +63,53 @@ const EPSILON = 0.001;
 let scale = 0.2;
 let offsetX = 0;
 let offsetY = 0;
+let isDrawing = false; // Throttling flag for draw()
 
 // Refactored: Fit to screen logic
+// Refactored: Fit to screen logic
 function fitToScreen() {
-    const scaleX = window.innerWidth / WORLD_SIZE;
-    const scaleY = window.innerHeight / WORLD_SIZE;
-    scale = Math.min(scaleX, scaleY) * 0.9; // Scale down to 90% for padding
-    
-    // Center the world
-    offsetX = (window.innerWidth - WORLD_SIZE * scale) / 2;
-    offsetY = (window.innerHeight - WORLD_SIZE * scale) / 2;
-}
+    // Fit to Screen Logic
+    const PADDING = 60; // Reduced padding for better visibility
+    // No top margin offset needed for centering, typically visuals look better perfectly centered or slightly higher
 
+    const availableWidth = window.innerWidth - PADDING * 2;
+    const availableHeight = window.innerHeight - PADDING * 2;
+
+    const scaleX = availableWidth / WORLD_SIZE;
+    const scaleY = availableHeight / WORLD_SIZE;
+    scale = Math.min(scaleX, scaleY); 
+    
+    // Center with vertical offset (Move up by 5% of height)
+    offsetX = (window.innerWidth - WORLD_SIZE * scale) / 2;
+    offsetY = (window.innerHeight - WORLD_SIZE * scale) / 2 - (window.innerHeight * 0.05);
+    
+    draw();
+}
 // Initial view: Fit to screen
-fitToScreen();
+// Initial view: Fit to screen call moved to after initialization
 
 // OPTIMIZATION: Use Map for O(1) lookup
 // Key: "x,y", Value: Pixel Object
 let pixelMap = new Map();
+
+// OPTIMIZATION: Spatial Chunking
+// Divide world into chunks to avoid iterating 300k pixels every frame
+const CHUNK_SIZE = 1000; 
+let pixelChunks = new Map(); // Key: "chunkX,chunkY", Value: Set<Pixel>
+
+function getChunkKey(x, y) {
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cy = Math.floor(y / CHUNK_SIZE);
+    return `${cx},${cy}`;
+}
+
+function addPixelToChunk(pixel) {
+    const key = getChunkKey(pixel.x, pixel.y);
+    if (!pixelChunks.has(key)) {
+        pixelChunks.set(key, new Set());
+    }
+    pixelChunks.get(key).add(pixel);
+}
 
 // NEW: Cache for User Pixel Counts
 // Key: nickname, Value: count
@@ -187,12 +216,15 @@ const idolInfo = {
 };
 
 // --- Clustering Logic ---
+// --- Clustering Logic ---
 function recalculateClusters() {
     clusters = [];
     const pixelsByGroup = new Map();
 
     // Group pixels by idol group
     pixelMap.forEach(pixel => {
+        if (!pixel.idol_group_name) return;
+        
         if (!pixelsByGroup.has(pixel.idol_group_name)) {
             pixelsByGroup.set(pixel.idol_group_name, []);
         }
@@ -237,36 +269,52 @@ function recalculateClusters() {
                     const nKey = `${n.x},${n.y}`;
                     if (pixelSet.has(nKey) && !visited.has(nKey)) {
                         visited.add(nKey);
-                        // We need to get the actual pixel object to continue BFS correctly? 
-                        // Actually, we just need coordinates for adjacency, but for correctness and data integrity, let's fetch from pixelMap if needed.
-                        // However, pixelSet only confirms existence.
-                        // Optimization: Just push {x, y} to queue is enough for traversal as long as we know it exists.
+                        // We push the actual pixel object if available, or just coordinate placeholder
+                        // Since we just need coordinates for bounds, the placeholder is okay, 
+                        // but to be safe for component list, we ideally want the pixel. 
+                        // But finding it in the array is O(N). 
+                        // For bounding box calc, we just used current.x/y.
+                        // So pushing the neighbor coordinate object is fine for BFS traversal queue.
                         queue.push({ x: n.x, y: n.y });
                     }
                 });
             }
 
-            clusters.push({
-                name: groupName,
-                minX: minX,
-                minY: minY,
-                maxX: maxX + GRID_SIZE, // +GRID_SIZE to cover the full cell width
-                maxY: maxY + GRID_SIZE,
-                centerX: (minX + maxX + GRID_SIZE) / 2,
-                centerY: (minY + maxY + GRID_SIZE) / 2,
-                width: (maxX + GRID_SIZE) - minX,
-                height: (maxY + GRID_SIZE) - minY,
-                size: component.length
-            });
+            if (component.length >= 5) { // Ignore small clusters
+                 clusters.push({
+                    name: groupName,
+                    minX: minX,
+                    minY: minY,
+                    maxX: maxX + GRID_SIZE,
+                    maxY: maxY + GRID_SIZE,
+                    centerX: (minX + maxX + GRID_SIZE) / 2,
+                    centerY: (minY + maxY + GRID_SIZE) / 2,
+                    width: (maxX + GRID_SIZE) - minX,
+                    height: (maxY + GRID_SIZE) - minY,
+                    size: component.length
+                });
+            }
         });
     });
 }
 
+// Initial view: Fit to screen
+fitToScreen();
+
+
 
 function draw() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (isDrawing) return;
+    isDrawing = true;
+
+    requestAnimationFrame(() => {
+        _render();
+        isDrawing = false;
+    });
+}
+
+function _render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
 
     ctx.save();
     ctx.translate(offsetX, offsetY);
@@ -281,36 +329,109 @@ function draw() {
     ctx.rect(0, 0, WORLD_SIZE, WORLD_SIZE);
     ctx.clip(); 
 
-    // Grid (only when zoomed in)
-    if (scale > 1.5) {
+    // Calculate Visible Viewport
+    // We only want to draw things that are inside the screen + slight margin
+    const VIEWPORT_MARGIN = 100 / scale; // 100px margin
+    const minVisibleX = -offsetX / scale - VIEWPORT_MARGIN;
+    const maxVisibleX = (canvas.width - offsetX) / scale + VIEWPORT_MARGIN;
+    const minVisibleY = -offsetY / scale - VIEWPORT_MARGIN;
+    const maxVisibleY = (canvas.height - offsetY) / scale + VIEWPORT_MARGIN;
+
+    // Draw Grid (Limit to viewport)
+    if (scale > 0.05) { // Show grid earlier
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'; // Slightly brighter
+        ctx.lineWidth = 1 / scale;
+        
+        // Grid Bounds aligned to GRID_SIZE
+        const startX = Math.max(0, Math.floor(minVisibleX / GRID_SIZE) * GRID_SIZE);
+        const startY = Math.max(0, Math.floor(minVisibleY / GRID_SIZE) * GRID_SIZE);
+        const endX = Math.min(WORLD_SIZE, Math.ceil(maxVisibleX / GRID_SIZE) * GRID_SIZE);
+        const endY = Math.min(WORLD_SIZE, Math.ceil(maxVisibleY / GRID_SIZE) * GRID_SIZE);
+
         ctx.beginPath();
-        ctx.strokeStyle = 'rgba(0, 212, 255, 0.1)';
-        for (let i = 0; i <= WORLD_SIZE; i += GRID_SIZE) {
-            ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE);
-            ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i);
+        for (let x = startX; x <= endX; x += GRID_SIZE) {
+            ctx.moveTo(x, startY);
+            ctx.lineTo(x, endY);
+        }
+        for (let y = startY; y <= endY; y += GRID_SIZE) {
+            ctx.moveTo(startX, y);
+            ctx.lineTo(endX, y);
         }
         ctx.stroke();
     }
 
-    // Draw all owned pixels (Iterate Map values)
-    pixelMap.forEach(pixel => {
-        const groupInfo = idolInfo[pixel.idol_group_name] || { color: pixel.color, initials: '?' };
-        ctx.fillStyle = groupInfo.color;
-        ctx.fillRect(pixel.x, pixel.y, GRID_SIZE, GRID_SIZE);
-        
-        // Removed: Old initials drawing. We are using new clusters now.
-    });
+    // Draw World Background (to distinguish from empty space)
+    // ctx.fillStyle = '#0f0f15'; // Already drawn background above
 
-    // --- NEW: Draw Group Labels ---
+    // Draw World Border
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 10 / scale;
+    ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+
+    // Draw all owned pixels (Iterate Visible Chunks)
+    // FIX: Enforce minimum size to avoid sub-pixel gaps
+    const minRenderSize = 1.05 / scale; 
+    const drawSize = Math.max(GRID_SIZE, minRenderSize);
+    const offset = (drawSize - GRID_SIZE) / 2;
+
+    // Determine Visible Chunks
+    const startChunkX = Math.floor(minVisibleX / CHUNK_SIZE);
+    const endChunkX = Math.ceil(maxVisibleX / CHUNK_SIZE);
+    const startChunkY = Math.floor(minVisibleY / CHUNK_SIZE);
+    const endChunkY = Math.ceil(maxVisibleY / CHUNK_SIZE);
+
+    // Optimized Drawing Loop: Sort chunks or use simple fillRect for now
+    // Batching (ctx.rect path) caused freeze. Reverting to fillRect.
+    // Optimization: Cache fillStyle to avoid state changes
+    let lastColor = null;
+
+    for (let cx = startChunkX; cx <= endChunkX; cx++) {
+        for (let cy = startChunkY; cy <= endChunkY; cy++) {
+            const chunkKey = `${cx},${cy}`;
+            if (pixelChunks.has(chunkKey)) {
+                const chunkPixels = pixelChunks.get(chunkKey);
+                
+                // Convert Set to Array for iteration if needed, or forEach directly
+                chunkPixels.forEach(pixel => {
+                    // Double check (chunks are rough, viewport is precise)
+                    if (pixel.x < minVisibleX || pixel.x > maxVisibleX || 
+                        pixel.y < minVisibleY || pixel.y > maxVisibleY) return;
+
+                    const groupInfo = idolInfo[pixel.idol_group_name] || { color: pixel.color, initials: '?' };
+                    
+                    if (lastColor !== groupInfo.color) {
+                        ctx.fillStyle = groupInfo.color;
+                        lastColor = groupInfo.color;
+                    }
+                    
+                    ctx.fillRect(pixel.x - offset, pixel.y - offset, drawSize, drawSize);
+                });
+            }
+        }
+    }
+
+    // --- NEW: Draw Group Labels (Optimized) ---
+    // Disable Shadows for Performance during heavy drawing (Scale < 0.2)
+    const useShadows = scale > 0.2;
+    if (useShadows) {
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 4;
+    } else {
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+    }
+
     clusters.forEach(cluster => {
+        // Culling for clusters
+         if (cluster.maxX < minVisibleX || cluster.minX > maxVisibleX || 
+            cluster.maxY < minVisibleY || cluster.minY > maxVisibleY) return;
+
         // Calculate screen size
-        // Start with a base font size relative to the smaller dimension
         let worldFontSize = Math.min(cluster.width, cluster.height) * 0.4;
         
-        // Refinement: Stricter width constraint (0.75) to absolutely prevent overlap
         ctx.font = `bold ${worldFontSize}px "Pretendard", sans-serif`;
         const textMetrics = ctx.measureText(cluster.name);
-        const maxWidth = cluster.width * 0.75; // More padding
+        const maxWidth = cluster.width * 0.75; 
         
         if (textMetrics.width > maxWidth) {
              const ratio = maxWidth / textMetrics.width;
@@ -319,26 +440,22 @@ function draw() {
 
         const screenFontSize = worldFontSize * scale;
 
-        // Only draw if readable (e.g., > 10px height)
         if (screenFontSize > 10) {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             ctx.font = `bold ${worldFontSize}px "Pretendard", sans-serif`; 
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             
-            // Add shadow/outline for readability
-            ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 4;
             ctx.lineWidth = worldFontSize * 0.05;
             ctx.strokeStyle = 'rgba(0,0,0,0.3)';
             ctx.strokeText(cluster.name, cluster.centerX, cluster.centerY);
             ctx.fillText(cluster.name, cluster.centerX, cluster.centerY);
-            
-            // Reset shadow
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
         }
     });
+    
+    // Reset shadow
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
 
 
     // Draw selection rectangle if currently selecting
@@ -384,7 +501,7 @@ function draw() {
 
         // Draw the bounding box
         ctx.strokeStyle = 'yellow';
-        ctx.lineWidth = 2; 
+        ctx.lineWidth = 2 / scale; // Thinner line when zoomed out
         ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
         ctx.fillStyle = 'rgba(255, 255, 0, 0.1)'; 
         ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
@@ -396,85 +513,82 @@ function draw() {
 
 // --- Data Fetching and Socket Events ---
 
+
+// --- Data Fetching and Socket Events ---
+
+// Helper: Centralize pixel updates
+function updatePixelStore(pixel) {
+    const key = `${pixel.x},${pixel.y}`;
+    const oldPixel = pixelMap.get(key);
+
+    // Handle Ownership Stats
+    if (oldPixel && oldPixel.owner_nickname) {
+        const oldOwner = oldPixel.owner_nickname;
+        const oldCount = userPixelCounts.get(oldOwner) || 0;
+        if (oldCount > 0) userPixelCounts.set(oldOwner, oldCount - 1);
+        
+        // Remove from old chunk (though coordinates shouldn't change, logic is safer)
+        const oldChunkKey = getChunkKey(oldPixel.x, oldPixel.y);
+        if (pixelChunks.has(oldChunkKey)) {
+             pixelChunks.get(oldChunkKey).delete(oldPixel);
+        }
+    }
+
+    // Update Map and Chunk
+    pixelMap.set(key, pixel);
+    addPixelToChunk(pixel);
+
+    // Update New Owner Stats
+    if (pixel.owner_nickname) {
+        const newOwner = pixel.owner_nickname;
+        const newCount = userPixelCounts.get(newOwner) || 0;
+        userPixelCounts.set(newOwner, newCount + 1);
+    }
+}
+
 fetch('/api/pixels')
     .then(response => {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         return response.json();
     })
     .then(initialPixels => {
-        // Convert array to Map and Populate User Pixel Counts
+        console.log(`[CLIENT] Loaded ${initialPixels.length} pixels.`);
+        // Reset containers
+        pixelMap.clear();
+        pixelChunks.clear();
+        userPixelCounts.clear();
+
         initialPixels.forEach(p => {
-            pixelMap.set(`${p.x},${p.y}`, p);
-            
-            // Stats
-            const count = userPixelCounts.get(p.owner_nickname) || 0;
-            userPixelCounts.set(p.owner_nickname, count + 1);
+             updatePixelStore(p);
         });
-        recalculateClusters(); // Calculate clusters initially
+        
+        recalculateClusters();
         draw();
     })
     .catch(e => console.error('Error fetching initial pixels:', e));
 
 socket.on('pixel_update', (pixel) => {
-    // Check old owner to decrement count
-    const key = `${pixel.x},${pixel.y}`;
-    const oldPixel = pixelMap.get(key);
+    updatePixelStore(pixel);
     
-    if (oldPixel && oldPixel.owner_nickname) {
-        const oldOwner = oldPixel.owner_nickname;
-        const oldCount = userPixelCounts.get(oldOwner) || 0;
-        if (oldCount > 0) {
-            userPixelCounts.set(oldOwner, oldCount - 1);
-        }
-    }
-
-    // Update Map
-    pixelMap.set(key, pixel);
-
-    // Increment new owner count
-    const newOwner = pixel.owner_nickname;
-    const newCount = userPixelCounts.get(newOwner) || 0;
-    userPixelCounts.set(newOwner, newCount + 1);
-
-    // DEFER RECALCULATION? No, for single update it's fine.
-    recalculateClusters(); 
-    draw();
-    
-    // Update panel if specific pixel is selected
+    // Check selection update
     if (selectedPixels.length === 1 && selectedPixels[0].x === pixel.x && selectedPixels[0].y === pixel.y) {
        updateSidePanel(pixel);
     }
+
+    // Simple redraw
+    draw();
 });
 
 // NEW: Batch Update Listener
 socket.on('batch_pixel_update', (pixels) => {
     console.log(`Received batch update for ${pixels.length} pixels`);
-    let shouldRecalculate = false;
-
+    
     pixels.forEach(pixel => {
-        const key = `${pixel.x},${pixel.y}`;
-        const oldPixel = pixelMap.get(key);
-        
-        if (oldPixel && oldPixel.owner_nickname) {
-            const oldOwner = oldPixel.owner_nickname;
-            const oldCount = userPixelCounts.get(oldOwner) || 0;
-            if (oldCount > 0) {
-                userPixelCounts.set(oldOwner, oldCount - 1);
-            }
-        }
-
-        pixelMap.set(key, pixel);
-
-        const newOwner = pixel.owner_nickname;
-        const newCount = userPixelCounts.get(newOwner) || 0;
-        userPixelCounts.set(newOwner, newCount + 1);
-        shouldRecalculate = true;
+        updatePixelStore(pixel);
     });
 
-    if (shouldRecalculate) {
-        recalculateClusters();
-        draw();
-    }
+    recalculateClusters();
+    draw();
 });
 
 
@@ -814,12 +928,59 @@ function updateSidePanel(singleOwnedPixel = null) {
 }
 
 
+// --- User Auth ---
+let currentUser = null;
+
+function checkAuth() {
+    fetch('/api/me')
+        .then(res => {
+            if (res.ok) return res.json();
+            throw new Error('Not logged in');
+        })
+        .then(user => {
+            currentUser = user;
+            // Update UI
+            const userInfo = document.getElementById('user-info');
+            const userNickname = document.getElementById('user-nickname');
+            const loginBtn = document.getElementById('login-btn');
+            
+            if (userInfo && userNickname && loginBtn) {
+                userInfo.style.display = 'block';
+                userNickname.textContent = user.nickname;
+                loginBtn.style.display = 'none';
+                
+                // Auto-fill nickname in panel
+                if (nicknameInput) {
+                    nicknameInput.value = user.nickname;
+                    nicknameInput.readOnly = true; 
+                    nicknameInput.style.backgroundColor = '#333';
+                }
+            }
+        })
+        .catch(() => {
+            currentUser = null;
+            const userInfo = document.getElementById('user-info');
+            const loginBtn = document.getElementById('login-btn');
+            
+            if (userInfo && loginBtn) {
+                userInfo.style.display = 'none';
+                loginBtn.style.display = 'block';
+            }
+        });
+}
+
+checkAuth();
+
 subscribeButton.onclick = () => {
-    const nickname = nicknameInput.value.trim();
+    let nickname = nicknameInput.value.trim();
+    if (currentUser) {
+        nickname = currentUser.nickname;
+    }
+
     const idolGroupName = idolSelect.value;
 
     if (!nickname) {
-        alert('닉네임을 입력해주세요.');
+        alert('닉네임을 입력해주세요 (로그인이 필요할 수 있습니다).');
         return;
     }
     if (selectedPixels.length === 0) {
@@ -921,4 +1082,38 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-window.onresize = draw;
+// --- Canvas Resizing Logic ---
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    draw();
+}
+
+window.addEventListener('resize', () => {
+    resizeCanvas();
+    fitToScreen(); // Re-center on resize
+});
+
+// Initial resizing
+resizeCanvas();
+
+// --- Initial Data Loading ---
+fetch('/api/pixels')
+    .then(res => res.json())
+    .then(pixels => {
+        console.log(`[CLIENT] Loaded ${pixels.length} pixels from server.`);
+        pixels.forEach(p => {
+            const key = `${p.x},${p.y}`;
+            pixelMap.set(key, p);
+            
+            // Update counts
+            if (p.owner_nickname) {
+               const count = userPixelCounts.get(p.owner_nickname) || 0;
+               userPixelCounts.set(p.owner_nickname, count + 1);
+            }
+        });
+        recalculateClusters();
+        draw();
+    })
+    .catch(err => console.error('Failed to load pixels:', err));
+

@@ -14,6 +14,16 @@ const createTable = db.prepare(`CREATE TABLE IF NOT EXISTS pixels (
 )`);
 createTable.run();
 
+const createUsersTable = db.prepare(`CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  email TEXT,
+  nickname TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+createUsersTable.run();
+
 const insert = db.prepare(`INSERT INTO pixels (x, y, color, idol_group_name, owner_nickname) VALUES (?, ?, ?, ?, ?)`);
 // Only insert initial data if table is empty, or just let it append if we want?
 // For now, let's just keep the single sample insert command but maybe wrap in try/catch or check count?

@@ -16,7 +16,7 @@
         h1 { margin: 0; font-size: 24px; color: #00d4ff; text-shadow: 0 0 10px rgba(0,212,255,0.5); }
         
         /* 구독 정보 패널 */
-        #side-panel { position: absolute; top: 20px; right: 20px; width: 280px; display: none; z-index: 100; }
+        #side-panel { position: absolute; top: 70px; right: 20px; width: 280px; display: none; z-index: 100; }
         .subscribe-btn { width: 100%; padding: 14px; background: linear-gradient(45deg, #00d4ff, #0055ff); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 15px; transition: 0.3s; }
         .subscribe-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 212, 255, 0.4); }
 
@@ -45,8 +45,17 @@
     </style>
 </head>
 <body>
+    <div id="auth-header" style="position: fixed; top: 10px; right: 20px; z-index: 1000; display: flex; gap: 10px; align-items: center;">
+        <div id="user-info" style="display: none; color: white; background: rgba(0,0,0,0.7); padding: 8px 15px; border-radius: 20px; backdrop-filter: blur(5px);">
+            <span id="user-nickname"></span>
+            <a href="/auth/logout" style="color: #ff6b6b; margin-left: 10px; text-decoration: none; font-weight: bold;">Logout</a>
+        </div>
+        <a id="login-btn" href="/auth/google" style="display: block; background: white; color: black; padding: 8px 15px; border-radius: 20px; text-decoration: none; font-weight: bold; box-shadow: 0 0 10px rgba(0,0,0,0.5);">
+            Sign in with Google
+        </a>
+    </div>
 
-    <div id="header" class="panel">
+    <div id="container">
         <h1>FANDOM PIXEL</h1>
         <div style="font-size: 12px; opacity: 0.6;">10,000,000 PIXELS GLOBAL STAGE</div>
     </div>
@@ -190,6 +199,7 @@
     <canvas id="pixelCanvas"></canvas>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="main.js?v=batch_debug_1"></script>
+    <script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
+    <script src="main.js?v=batch_done_performance_fix"></script>
 </body>
 </html>

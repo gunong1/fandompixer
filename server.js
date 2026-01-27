@@ -1,5 +1,9 @@
+require('dotenv').config();
 const express = require('express');
 const Database = require('better-sqlite3');
+const session = require('express-session');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const app = express();
 const http = require('http');
 const server = http.createServer(app);
@@ -7,15 +11,98 @@ const { Server } = require("socket.io");
 const io = new Server(server);
 
 const port = process.env.PORT || 3000;
-
 const db = new Database('database.db');
 
+// --- Middleware ---
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'dev_secret_key',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false } // Set to true if behind HTTPS
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+
 app.use(express.static(__dirname));
+
+// --- Passport Configuration ---
+passport.serializeUser((user, done) => {
+    done(null, user.id);
+});
+
+passport.deserializeUser((id, done) => {
+    try {
+        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+        done(null, user);
+    } catch (err) {
+        done(err, null);
+    }
+});
+
+// Google Strategy
+if (process.env.GOOGLE_CLIENT_ID) {
+    passport.use(new GoogleStrategy({
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:3000/auth/google/callback"
+    },
+        function (accessToken, refreshToken, profile, cb) {
+            try {
+                // Check if user exists
+                let user = db.prepare('SELECT * FROM users WHERE provider = ? AND provider_id = ?').get('google', profile.id);
+
+                if (!user) {
+                    // Create user
+                    const email = (profile.emails && profile.emails.length > 0) ? profile.emails[0].value : null;
+                    const insert = db.prepare('INSERT INTO users (provider, provider_id, email, nickname) VALUES (?, ?, ?, ?)');
+                    const info = insert.run('google', profile.id, email, profile.displayName);
+                    user = { id: info.lastInsertRowid, provider: 'google', provider_id: profile.id, email: email, nickname: profile.displayName };
+                }
+                return cb(null, user);
+            } catch (err) {
+                return cb(err);
+            }
+        }
+    ));
+} else {
+    console.warn("GOOGLE_CLIENT_ID not found in .env. Google Auth will strictly fail.");
+}
+
+
+// --- Routes ---
 
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
+// Auth Routes
+app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+app.get('/auth/google/callback',
+    passport.authenticate('google', { failureRedirect: '/' }),
+    function (req, res) {
+        // Successful authentication, redirect home.
+        res.redirect('/');
+    });
+
+app.get('/auth/logout', (req, res, next) => {
+    req.logout((err) => {
+        if (err) { return next(err); }
+        res.redirect('/');
+    });
+});
+
+app.get('/api/me', (req, res) => {
+    if (req.isAuthenticated()) {
+        res.json(req.user);
+    } else {
+        res.status(401).json({ message: 'Not authenticated' });
+    }
+});
+
+
+// API Routes
 app.get('/api/pixels', (req, res) => {
     try {
         const stmt = db.prepare('SELECT * FROM pixels');
