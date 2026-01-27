@@ -127,7 +127,12 @@ function addPixelToChunk(pixel) {
 
 // NEW: Cache for User Pixel Counts
 // Key: nickname, Value: count
+// Key: nickname, Value: count
 let userPixelCounts = new Map();
+
+// NEW: Cache for User-Group Pixel Counts (Specific Ownership)
+// Key: "nickname:groupName", Value: count
+let userGroupPixelCounts = new Map();
 
 // NEW: Clusters for Group Labels
 let clusters = [];
@@ -569,7 +574,6 @@ function updatePixelStore(pixel) {
     const oldPixel = pixelMap.get(key);
 
     // Handle Ownership Stats
-    // Handle Ownership Stats
     if (oldPixel && oldPixel.owner_nickname) {
         const oldOwner = oldPixel.owner_nickname;
         const oldCount = userPixelCounts.get(oldOwner) || 0;
@@ -580,6 +584,11 @@ function updatePixelStore(pixel) {
             const oldGroup = oldPixel.idol_group_name;
             const oldGroupCount = idolPixelCounts.get(oldGroup) || 0;
             if (oldGroupCount > 0) idolPixelCounts.set(oldGroup, oldGroupCount - 1);
+
+            // Update User-Group Stats (Decrement)
+            const userGroupKey = `${oldOwner}:${oldGroup}`;
+            const oldUserGroupCount = userGroupPixelCounts.get(userGroupKey) || 0;
+            if (oldUserGroupCount > 0) userGroupPixelCounts.set(userGroupKey, oldUserGroupCount - 1);
         }
 
         // Remove from old chunk (though coordinates shouldn't change, logic is safer)
@@ -604,6 +613,11 @@ function updatePixelStore(pixel) {
             const newGroup = pixel.idol_group_name;
             const newGroupCount = idolPixelCounts.get(newGroup) || 0;
             idolPixelCounts.set(newGroup, newGroupCount + 1);
+
+            // Update User-Group Stats (Increment)
+            const userGroupKey = `${newOwner}:${newGroup}`;
+            const newUserGroupCount = userGroupPixelCounts.get(userGroupKey) || 0;
+            userGroupPixelCounts.set(userGroupKey, newUserGroupCount + 1);
         }
     }
 }
@@ -619,6 +633,7 @@ fetch('/api/pixels')
         pixelMap.clear();
         pixelChunks.clear();
         userPixelCounts.clear();
+        userGroupPixelCounts.clear();
 
         initialPixels.forEach(p => {
             updatePixelStore(p);
@@ -965,8 +980,12 @@ function updateSidePanel(singleOwnedPixel = null) {
                     areaIdText.innerText = `영역 선택됨`;
                 }
 
-                // --- NEW: Calculate and Show Owner Stats ---
-                const ownerCount = userPixelCounts.get(samplePixel.owner_nickname) || 0;
+                // --- NEW: Calculate and Show Owner Stats (Specific to Group) ---
+                // const ownerCount = userPixelCounts.get(samplePixel.owner_nickname) || 0; // OLD: Global count
+
+                const userGroupKey = `${samplePixel.owner_nickname}:${samplePixel.idol_group_name}`;
+                const ownerCount = userGroupPixelCounts.get(userGroupKey) || 0;
+
                 // Calculate Market Share (Percentage of TOTAL WORLD)
                 // Total grid cells = (WORLD_SIZE / GRID_SIZE) ^ 2
                 const totalWorldPixels = Math.pow(Math.floor(WORLD_SIZE / GRID_SIZE), 2);
