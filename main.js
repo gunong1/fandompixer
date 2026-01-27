@@ -971,7 +971,7 @@ function checkAuth() {
 
 checkAuth();
 
-subscribeButton.onclick = () => {
+subscribeButton.onclick = async () => {
     let nickname = nicknameInput.value.trim();
     if (currentUser) {
         nickname = currentUser.nickname;
@@ -988,8 +988,6 @@ subscribeButton.onclick = () => {
         return;
     }
 
-    // FIX: Filter out pixels that are already owned (registered in pixelMap)
-    // This prevents purchasing already owned pixels in a mixed selection.
     const pixelsToSend = selectedPixels.filter(p => 
         p.x >= 0 && p.x < WORLD_SIZE - EPSILON && p.y >= 0 && p.y < WORLD_SIZE - EPSILON &&
         !pixelMap.has(`${p.x},${p.y}`)
@@ -1000,51 +998,78 @@ subscribeButton.onclick = () => {
         return;
     }
 
-    const pixelsPayload = [];
-    const groupInfo = idolInfo[idolGroupName];
+    const totalAmount = pixelsToSend.length * 1000;
+    const paymentId = `payment-${Math.random().toString(36).slice(2, 11)}`;
 
-    // Generate color dynamically if not in idolInfo
-    let color = '';
-    if (idolInfo[idolGroupName]) {
-        color = idolInfo[idolGroupName].color;
-    } else {
-        // Generate pastel color based on name hash
-        let hash = 0;
-        for (let i = 0; i < idolGroupName.length; i++) {
-            hash = idolGroupName.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const h = Math.abs(hash) % 360;
-        color = `hsla(${h}, 70%, 60%, 0.7)`;
-    }
-
-    pixelsToSend.forEach(pixel => {
-        pixelsPayload.push({
-            x: pixel.x,
-            y: pixel.y,
-            color: color,
-            idol_group_name: idolGroupName,
-            owner_nickname: nickname
+    try {
+        console.log(`[PAYMENT] Requesting payment for ${pixelsToSend.length} pixels (Total: ₩${totalAmount})`);
+        
+        // --- PORTONE V2 REQUEST ---
+        const response = await PortOne.requestPayment({
+            storeId: "iamporttest_3",
+            channelKey: "channel-key-c55bfde2-056f-414f-b62c-cf4d2faddfdf",
+            paymentId: paymentId,
+            orderName: `Idolpixel: ${pixelsToSend.length} pixels`,
+            totalAmount: totalAmount,
+            currency: "CURRENCY_KRW",
+            payMethod: "CARD", // Default to card, user can change in UI if configured
+            customer: {
+                fullName: nickname,
+            },
         });
-    });
 
-    // Use Batch Emit with Chunking (Socket.io limit is usually 1MB)
-    const CHUNK_SIZE = 2000;
-    const totalChunks = Math.ceil(pixelsPayload.length / CHUNK_SIZE);
-    console.log(`[CLIENT] Split ${pixelsPayload.length} pixels into ${totalChunks} chunks.`);
-
-    for (let i = 0; i < pixelsPayload.length; i += CHUNK_SIZE) {
-        const chunk = pixelsPayload.slice(i, i + CHUNK_SIZE);
-        socket.emit('batch_new_pixels', chunk);
-        if (i % (CHUNK_SIZE * 10) === 0) {
-             console.log(`[CLIENT] Sent chunk ${(i / CHUNK_SIZE) + 1}/${totalChunks}`);
+        if (response.code !== undefined) {
+            // Payment Failed
+            alert(`결제에 실패했습니다: ${response.message}`);
+            return;
         }
-    }
-    console.log(`[CLIENT] All chunks sent.`);
 
-    sidePanel.style.display = 'none';
-    nicknameInput.value = '';
-    selectedPixels = []; 
-    draw(); 
+        console.log(`[PAYMENT] Success! Payment ID: ${response.paymentId}`);
+        // Proceed with database update
+        const pixelsPayload = [];
+
+        // Generate color dynamically if not in idolInfo
+        let color = '';
+        if (idolInfo[idolGroupName]) {
+            color = idolInfo[idolGroupName].color;
+        } else {
+            let hash = 0;
+            for (let i = 0; i < idolGroupName.length; i++) {
+                hash = idolGroupName.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const h = Math.abs(hash) % 360;
+            color = `hsla(${h}, 70%, 60%, 0.7)`;
+        }
+
+        pixelsToSend.forEach(pixel => {
+            pixelsPayload.push({
+                x: pixel.x,
+                y: pixel.y,
+                color: color,
+                idol_group_name: idolGroupName,
+                owner_nickname: nickname
+            });
+        });
+
+        // Use Batch Emit with Chunking
+        const CHUNK_SIZE = 2000;
+        const totalChunks = Math.ceil(pixelsPayload.length / CHUNK_SIZE);
+
+        for (let i = 0; i < pixelsPayload.length; i += CHUNK_SIZE) {
+            const chunk = pixelsPayload.slice(i, i + CHUNK_SIZE);
+            socket.emit('batch_new_pixels', chunk);
+        }
+
+        alert('구매가 완료되었습니다!');
+        sidePanel.style.display = 'none';
+        nicknameInput.value = '';
+        selectedPixels = []; 
+        draw();
+
+    } catch (error) {
+        console.error('[PAYMENT] Error:', error);
+        alert('결제 처리 중 도우미 오류가 발생했습니다.');
+    }
 };
 
 canvas.onwheel = (e) => {
