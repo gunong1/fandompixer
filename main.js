@@ -1247,7 +1247,7 @@ if (mobileModeBtn) {
 // --- Touch Event Listeners (Enhanced for Long-Press Selection) ---
 let longPressTimer = null;
 let isLongPressMode = false;
-const LONG_PRESS_DURATION = 500; // ms
+const LONG_PRESS_DURATION = 250; // ms (0.25s)
 
 canvas.addEventListener('touchstart', (e) => {
     e.preventDefault(); // Prevent scrolling
