@@ -128,6 +128,69 @@ let pixelMap = new Map();
 const CHUNK_SIZE = 1000;
 let pixelChunks = new Map(); // Key: "chunkX,chunkY", Value: Set<Pixel>
 
+class ChunkManager {
+    constructor() {
+        this.loadedChunks = new Set(); // "cx,cy"
+        this.pendingChunks = new Set();
+        this.chunkSize = CHUNK_SIZE;
+    }
+
+    update(minX, minY, maxX, maxY) {
+        // Expand bounds slightly to preload
+        const startCx = Math.floor(minX / this.chunkSize);
+        const endCx = Math.ceil(maxX / this.chunkSize);
+        const startCy = Math.floor(minY / this.chunkSize);
+        const endCy = Math.ceil(maxY / this.chunkSize);
+
+        for (let cx = startCx; cx <= endCx; cx++) {
+            for (let cy = startCy; cy <= endCy; cy++) {
+                this.loadChunk(cx, cy);
+            }
+        }
+    }
+
+    async loadChunk(cx, cy) {
+        const key = `${cx},${cy}`;
+        if (this.loadedChunks.has(key) || this.pendingChunks.has(key)) return;
+
+        this.pendingChunks.add(key);
+        const minX = cx * this.chunkSize;
+        const minY = cy * this.chunkSize;
+        // API expects exclusive upper bound usually? 
+        // SQL: x >= minX AND x < maxX
+        const maxX = minX + this.chunkSize;
+        const maxY = minY + this.chunkSize;
+
+        // Validation against WORLD_SIZE (optional but good)
+        if (maxX < 0 || minX > WORLD_SIZE || maxY < 0 || minY > WORLD_SIZE) {
+            this.loadedChunks.add(key); // Mark empty space as loaded
+            this.pendingChunks.delete(key);
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/pixels/chunk?minX=${minX}&minY=${minY}&maxX=${maxX}&maxY=${maxY}`);
+            if (!res.ok) throw new Error(`Chunk ${key} fetch failed`);
+            const pixels = await res.json();
+
+            pixels.forEach(p => updatePixelStore(p));
+            this.loadedChunks.add(key);
+
+            // Recalculate clusters if new data arrived (throttled)
+            requestClusterUpdate();
+            draw();
+
+        } catch (e) {
+            console.error("Chunk load error:", e);
+            // Don't add to loadedChunks so we retry
+        } finally {
+            this.pendingChunks.delete(key);
+        }
+    }
+}
+const chunkManager = new ChunkManager();
+
+
 function getChunkKey(x, y) {
     const cx = Math.floor(x / CHUNK_SIZE);
     const cy = Math.floor(y / CHUNK_SIZE);
@@ -359,12 +422,13 @@ function requestClusterUpdate() {
 
 function gameLoop(timestamp) {
     // 1. Handle Cluster Updates (Throttled)
+    // 1. Handle Cluster Updates (Throttled)
     if (pendingClusterUpdate && (timestamp - lastClusterUpdateTime > CLUSTER_UPDATE_INTERVAL)) {
-        // recalculateClusters(); // Heavy operation, disabling auto-loop to prevent freeze
-        // updateRankingBoard();
+        recalculateClusters();
+        // updateRankingBoard(); // No need to spam this, logic handles it separately
         lastClusterUpdateTime = timestamp;
         pendingClusterUpdate = false;
-        // needsRedraw = true; 
+        needsRedraw = true;
     }
 
     // 2. Handle Rendering
@@ -410,6 +474,9 @@ function _render() {
     const maxVisibleX = (canvas.width - offsetX) / scale + VIEWPORT_MARGIN;
     const minVisibleY = -offsetY / scale - VIEWPORT_MARGIN;
     const maxVisibleY = (canvas.height - offsetY) / scale + VIEWPORT_MARGIN;
+
+    // --- NEW: Trigger Dynamic Chunk Loading ---
+    chunkManager.update(minVisibleX, minVisibleY, maxVisibleX, maxVisibleY);
 
     // Draw Grid (Limit to viewport)
     if (scale > 0.05) { // Show grid earlier
@@ -644,29 +711,12 @@ function updatePixelStore(pixel) {
     }
 }
 
-fetch('/api/pixels')
-    .then(response => {
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
-    })
-    .then(initialPixels => {
-        console.log(`[CLIENT] Loaded ${initialPixels.length} pixels.`);
-        // Reset containers
-        pixelMap.clear();
-        pixelChunks.clear();
-        userPixelCounts.clear();
-        userGroupPixelCounts.clear();
+// Initial Data Load (Modified for Chunking)
+// We NO LONGER fetch all pixels. 
+// Pixels will be loaded by auto-pan/render loop or initial draw.
 
-        initialPixels.forEach(p => {
-            updatePixelStore(p);
-        });
-
-        recalculateClusters(); // Initial calculation (explicit)
-        updateRankingBoard(); // Update ranking board
-        // requestClusterUpdate(); // Not needed if we do it here, but keeping it doesn't hurt if logic changes back
-        draw(); // Initial draw
-    })
-    .catch(e => console.error('Error fetching initial pixels:', e));
+updateRankingBoard();
+draw(); // This will trigger _render -> chunkManager.update -> API call
 
 socket.on('pixel_update', (pixel) => {
     updatePixelStore(pixel);
@@ -1393,43 +1443,44 @@ canvas.addEventListener('touchend', (e) => {
 
 
 
+// --- NEW: Ranking Board (Server-side) ---
 function updateRankingBoard() {
-    const rankingList = document.getElementById('ranking-list');
-    if (!rankingList) return;
+    fetch('/api/ranking')
+        .then(res => res.json())
+        .then(rankingData => {
+            const rankingList = document.getElementById('ranking-list');
+            if (!rankingList) return;
+            rankingList.innerHTML = '';
 
-    // Convert Map to Array and Sort
-    const sortedGroups = Array.from(idolPixelCounts.entries())
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 3); // Top 3
+            // Calculate total for percentage
+            const totalPixels = rankingData.reduce((sum, item) => sum + item.count, 0);
 
-    // Total World Pixels for % calc
-    // 63240x63240 / 20x20 = 3162x3162 = 10,000,000
-    const TOTAL_PIXELS = 10000000;
+            // Show Top 3 Only
+            rankingData.slice(0, 3).forEach((item, index) => {
+                const li = document.createElement('li');
+                const groupInfo = idolInfo[item.name] || { color: '#ccc', initials: '?' };
 
-    let html = '';
-    sortedGroups.forEach((group, index) => {
-        const percent = ((group.count / TOTAL_PIXELS) * 100).toFixed(4); // 4 decimal places
-        const rankEmoji = ['🥇', '🥈', '🥉'][index];
-        const groupInfo = idolInfo[group.name] || { color: '#fff' };
+                // Percentage
+                const percentage = totalPixels > 0 ? ((item.count / totalPixels) * 100).toFixed(1) : 0;
+                const rankEmoji = ['🥇', '🥈', '🥉'][index] || `<span class="rank-num">${index + 1}</span>`;
 
-        html += `
-            <li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 16px;">${rankEmoji}</span>
-                    <div>
-                        <div style="font-weight: bold; color: ${groupInfo.color}; text-shadow: 0 0 5px ${groupInfo.color}40;">${group.name}</div>
-                        <div style="font-size: 11px; opacity: 0.7;">${group.count.toLocaleString()} px</div>
+                li.style.cssText = "display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);";
+                li.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 16px; width: 20px; text-align: center;">${rankEmoji}</span>
+                        <div>
+                            <div style="font-weight: bold; color: ${groupInfo.color}; text-shadow: 0 0 5px ${groupInfo.color}40;">${item.name}</div>
+                            <div style="font-size: 11px; opacity: 0.7;">${item.count.toLocaleString()} px</div>
+                        </div>
                     </div>
-                </div>
-                <div style="font-weight: bold; font-family: monospace; color: #00d4ff;">${percent}%</div>
-            </li>
-        `;
-    });
+                    <div style="font-weight: bold; font-family: monospace; color: #00d4ff;">${percentage}%</div>
+                `;
+                rankingList.appendChild(li);
+            });
 
-    if (sortedGroups.length === 0) {
-        html = '<li style="color: #666; text-align: center; padding: 10px;">아직 점령된 땅이 없습니다.</li>';
-    }
-
-    rankingList.innerHTML = html;
+            if (rankingData.length === 0) {
+                rankingList.innerHTML = '<li style="color: #666; text-align: center; padding: 10px;">아직 점령된 땅이 없습니다.</li>';
+            }
+        })
+        .catch(err => console.error("Error updating ranking:", err));
 }
