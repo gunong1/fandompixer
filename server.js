@@ -13,7 +13,46 @@ const io = new Server(server);
 const port = process.env.PORT || 3000;
 const db = new Database('database.db');
 
+// --- DATABASE OPTIMIZATION ---
+db.pragma('journal_mode = WAL'); // Better concurrency
+db.prepare('CREATE INDEX IF NOT EXISTS idx_pixels_xy ON pixels(x, y)').run(); // Fast range queries
+// --- DATABASE MIGRATIONS ---
+try {
+    db.prepare("ALTER TABLE pixels ADD COLUMN purchased_at DATETIME DEFAULT CURRENT_TIMESTAMP").run();
+    db.prepare("ALTER TABLE pixels ADD COLUMN expires_at DATETIME").run();
+    console.log("Migrated DB: Added timestamp columns.");
+} catch (e) {
+    // Columns likely exist
+}
+
 // --- Middleware ---
+// ... (rest of middleware)
+
+// NEW: History API
+app.get('/api/history', (req, res) => {
+    if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: 'Not authenticated' });
+    }
+    const nickname = req.user.nickname;
+    try {
+        const stmt = db.prepare(`
+            SELECT * FROM pixels 
+            WHERE owner_nickname = ? 
+            ORDER BY purchased_at DESC 
+            LIMIT 100
+        `);
+        const rows = stmt.all(nickname);
+        res.json(rows);
+    } catch (err) {
+        console.error("Error fetching history:", err);
+        res.status(500).send(err.message);
+    }
+});
+
+// ... (existing routes)
+
+// (Moved to io.on connection block below)
+
 app.use(session({
     secret: process.env.SESSION_SECRET || 'dev_secret_key',
     resave: false,
@@ -109,8 +148,50 @@ app.get('/api/me', (req, res) => {
 
 
 // API Routes
+
+// NEW: Chunk Loading API
+app.get('/api/pixels/chunk', (req, res) => {
+    const { minX, minY, maxX, maxY } = req.query;
+
+    // Validate inputs
+    if (!minX || !minY || !maxX || !maxY) {
+        return res.status(400).json({ error: 'Missing bounds parameters (minX, minY, maxX, maxY)' });
+    }
+
+    try {
+        // Optimized range query using INDEX
+        const stmt = db.prepare('SELECT * FROM pixels WHERE x >= ? AND x < ? AND y >= ? AND y < ?');
+        const rows = stmt.all(minX, maxX, minY, maxY);
+        res.json(rows);
+    } catch (err) {
+        console.error("Error fetching chunk:", err);
+        res.status(500).send(err.message);
+    }
+});
+
+// NEW: Ranking API (Server-side Aggregation)
+app.get('/api/ranking', (req, res) => {
+    try {
+        const stmt = db.prepare(`
+            SELECT idol_group_name as name, COUNT(*) as count 
+            FROM pixels 
+            WHERE idol_group_name IS NOT NULL 
+            GROUP BY idol_group_name 
+            ORDER BY count DESC 
+            LIMIT 10
+        `);
+        const rows = stmt.all();
+        res.json(rows);
+    } catch (err) {
+        console.error("Error fetching ranking:", err);
+        res.status(500).send(err.message);
+    }
+});
+
+// Legacy Endpoint (Deprecated for large scale, but kept for compatibility/initial debug)
 app.get('/api/pixels', (req, res) => {
     try {
+        // console.warn("WARNING: /api/pixels called. This is slow for large datasets.");
         const stmt = db.prepare('SELECT * FROM pixels');
         const rows = stmt.all();
         res.json(rows);
@@ -127,7 +208,7 @@ io.on('connection', (socket) => {
 
     socket.on('new_pixel', (data) => {
         try {
-            const stmt = db.prepare(`INSERT INTO pixels (x, y, color, idol_group_name, owner_nickname) VALUES (?, ?, ?, ?, ?)`);
+            const stmt = db.prepare(`INSERT INTO pixels (x, y, color, idol_group_name, owner_nickname, purchased_at, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now', '+7 days'))`);
             const info = stmt.run(data.x, data.y, data.color, data.idol_group_name, data.owner_nickname);
             io.emit('pixel_update', {
                 id: info.lastInsertRowid,
@@ -146,7 +227,7 @@ io.on('connection', (socket) => {
     socket.on('batch_new_pixels', (pixels) => {
         console.log(`[SERVER] Received batch_new_pixels event with ${pixels ? pixels.length : 'undefined'} pixels`);
         try {
-            const insert = db.prepare(`INSERT INTO pixels (x, y, color, idol_group_name, owner_nickname) VALUES (?, ?, ?, ?, ?)`);
+            const insert = db.prepare(`INSERT INTO pixels (x, y, color, idol_group_name, owner_nickname, purchased_at, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now', '+7 days'))`);
             const insertMany = db.transaction((pixels) => {
                 const updates = [];
                 for (const p of pixels) {

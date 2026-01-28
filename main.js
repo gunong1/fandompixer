@@ -1443,6 +1443,75 @@ canvas.addEventListener('touchend', (e) => {
 
 
 
+// --- HISTORY / LOG FEATURE ---
+const historyBtn = document.getElementById('history-btn');
+const historyModal = document.getElementById('history-modal');
+const closeHistoryBtn = document.getElementById('close-history-btn');
+const historyList = document.getElementById('history-list');
+
+if (historyBtn) {
+    historyBtn.onclick = () => {
+        historyModal.style.display = 'flex';
+        fetchHistory();
+    };
+}
+
+if (closeHistoryBtn) {
+    closeHistoryBtn.onclick = () => {
+        historyModal.style.display = 'none';
+    };
+}
+
+// Close on outside click
+window.addEventListener('click', (e) => {
+    if (e.target === historyModal) {
+        historyModal.style.display = 'none';
+    }
+});
+
+function fetchHistory() {
+    fetch('/api/history')
+        .then(res => {
+            if (res.status === 401) throw new Error('로그인이 필요합니다.');
+            if (!res.ok) throw new Error('내역을 불러오는데 실패했습니다.');
+            return res.json();
+        })
+        .then(data => {
+            historyList.innerHTML = '';
+            if (data.length === 0) {
+                historyList.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px; color: #aaa;">구매 내역이 없습니다.</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+
+                // Format Dates
+                const purchased = item.purchased_at ? new Date(item.purchased_at).toLocaleString() : '-';
+                const expires = item.expires_at ? new Date(item.expires_at).toLocaleString() : '무제한';
+
+                // Highlight if expired (example logic)
+                const isExpired = item.expires_at && new Date(item.expires_at) < new Date();
+                const colorStyle = isExpired ? 'color: #ff4d4d;' : '';
+
+                tr.innerHTML = `
+                    <td style="padding: 10px; font-size: 13px;">${purchased}</td>
+                    <td style="padding: 10px;">
+                        <span style="color: ${idolInfo[item.idol_group_name]?.color || '#fff'}">${item.idol_group_name}</span>
+                    </td>
+                    <td style="padding: 10px; font-family: monospace;">${item.x}, ${item.y}</td>
+                    <td style="padding: 10px; font-size: 13px; ${colorStyle}">${expires}</td>
+                `;
+                historyList.appendChild(tr);
+            });
+        })
+        .catch(err => {
+            console.error(err);
+            historyList.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 20px; color: #ff6b6b;">${err.message}</td></tr>`;
+        });
+}
+
 // --- NEW: Ranking Board (Server-side) ---
 function updateRankingBoard() {
     fetch('/api/ranking')
