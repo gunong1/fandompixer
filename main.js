@@ -1453,6 +1453,25 @@ function updateSidePanel(singleOwnedPixel = null) {
 
         if (unownedInSelection.length > 0) { // There are unowned pixels
             purchaseForm.style.display = 'block';
+
+            // Auto-fill Nickname if Logged In
+            console.log(`[SidePanel] Checking Auth for Autofill: currentUser=${currentUser ? currentUser.nickname : 'null'}, Input=${!!nicknameInput}`);
+
+            if (currentUser && nicknameInput) {
+                console.log(`[SidePanel] Auto-filling nickname: ${currentUser.nickname}`);
+                nicknameInput.value = currentUser.nickname;
+                nicknameInput.readOnly = true;
+                nicknameInput.disabled = false;
+                // Fix placeholder style in case it was stuck in guest mode
+                nicknameInput.style.backgroundColor = '#333';
+            } else if (!currentUser && nicknameInput) {
+                // Ensure guest state if NOT logged in (fix for half-state)
+                console.log(`[SidePanel] Setting guest state.`);
+                nicknameInput.value = '';
+                nicknameInput.disabled = true;
+                nicknameInput.placeholder = i18n.t('sidebar.placeholder_nickname');
+            }
+
             if (ownedInSelection.length > 0) {
                 statusTag.textContent = i18n.t('sidebar.status_mixed', { count: unownedInSelection.length, owned: ownedInSelection.length }) || `${unownedInSelection.length} available (${ownedInSelection.length} owned)`;
                 statusTag.style.background = '#ff9800'; // Orange for mixed
@@ -1706,7 +1725,18 @@ async function checkPendingPayment() {
 
         // UI Cleanup
         if (sidePanel) sidePanel.style.display = 'none';
-        if (nicknameInput) nicknameInput.value = '';
+
+        // Restore nickname from payment state to avoid "Login Required" flicker
+        if (nicknameInput) {
+            nicknameInput.value = nickname;
+            nicknameInput.disabled = false; // Enabled but read-only for logged in
+            nicknameInput.readOnly = true;
+            nicknameInput.placeholder = i18n.t('sidebar.placeholder_nickname');
+
+            // Ensure style matches logged-in state
+            nicknameInput.style.backgroundColor = '#333';
+        }
+
         selectedPixels = [];
         draw();
 
@@ -1974,7 +2004,15 @@ subscribeButton.onclick = async () => {
         localStorage.removeItem('pending_payment');
 
         sidePanel.style.display = 'none';
-        nicknameInput.value = '';
+
+        // Restore nickname to maintain logged-in state in UI
+        if (nicknameInput) {
+            nicknameInput.value = nickname;
+            nicknameInput.disabled = false;
+            nicknameInput.readOnly = true;
+            nicknameInput.style.backgroundColor = '#333';
+        }
+
         selectedPixels = [];
         draw();
 
