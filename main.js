@@ -2019,9 +2019,8 @@ subscribeButton.onclick = async () => {
             paymentRequest.totalAmount = finalAmount;
             paymentRequest.currency = "USD";
             paymentRequest.channelKey = targetChannelKey;
-            // paymentRequest.payMethod = "EASY_PAY"; // Removed.
-            // paymentRequest.easyPay = { providerId: "PAYPAL" }; // Removed.
-            paymentRequest.uiType = "PAYPAL_SPB"; // Required for PayPal V2
+            paymentRequest.payMethod = "PAYPAL"; // Trying definitive enum
+            paymentRequest.country = "US"; // Adding country just in case
             paymentRequest.windowType = {
                 pc: 'IFRAME',
                 mobile: 'POPUP'
