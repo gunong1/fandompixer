@@ -2843,20 +2843,7 @@ function recalculateStats() {
             userGroupPixelCounts.set(userGroupKey, (userGroupPixelCounts.get(userGroupKey) || 0) + 1);
         }
     });
-
-    // User Count
-    userPixelCounts.set(owner, (userPixelCounts.get(owner) || 0) + 1);
-
-    if (group) {
-        // Group Count
-        idolPixelCounts.set(group, (idolPixelCounts.get(group) || 0) + 1);
-
-        // User-Group Count (Format: owner:group)
-        const userGroupKey = `${owner}:${group}`;
-        userGroupPixelCounts.set(userGroupKey, (userGroupPixelCounts.get(userGroupKey) || 0) + 1);
-    }
-});
-console.log(`[Stats] Recalculation complete. PixelMap size: ${pixelMap.size}, Unique Owners: ${userPixelCounts.size}`);
+    console.log(`[Stats] Recalculation complete. PixelMap size: ${pixelMap.size}, Unique Owners: ${userPixelCounts.size}`);
 }
 
 let clusterUpdateTimeout = null;
