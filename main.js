@@ -2031,8 +2031,9 @@ subscribeButton.onclick = async () => {
 
             console.log(`[PAYMENT] Mode: USD(PayPal), Channel: ${targetChannelKey}, Amount: ${finalAmount}`);
 
-            // [HARDCODED CLEAN OBJECT v22]
-            // PC: NEW_TAB (Popup), Mobile: REDIRECTION (Page Move)
+            // [HARDCODED CLEAN OBJECT v23]
+            // Back to Basics: No windowType (Default to SDK choice, likely IFRAME/Modal)
+            // Previous errors with default were due to parameter pollution. Now clean.
             const paypalData = {
                 storeId: paymentConfig.storeId,
                 channelKey: targetChannelKey,
@@ -2040,14 +2041,11 @@ subscribeButton.onclick = async () => {
                 orderName: `Idolpixel: ${pixelsToSend.length} pixels`,
                 totalAmount: finalAmount,
                 currency: "USD",
-                payMethod: "PAYPAL", // Explicitly PAYPAL
+                payMethod: "PAYPAL",
 
-                // ★ CRITICAL: Hybrid Approach
-                windowType: {
-                    pc: "NEW_TAB",      // PC: Open new tab (Popup equivalent)
-                    mobile: "REDIRECTION" // Mobile: Move page
-                },
-                // Return URL after payment
+                // windowType REMOVED -> Fallback to SDK default
+
+                // Return URL after payment (Essential for mobile fallback)
                 redirectUrl: window.location.href
             };
 
