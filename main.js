@@ -21,7 +21,7 @@ class I18n {
     async loadLocale(lang) {
         // 1. Define Robust Defaults (Fallback)
         const defaults = {
-            "header": { "title": "FANDOM PIXEL", "subtitle": "10,000,000 PIXELS GLOBAL STAGE", "login": "Google Login", "logout": "Logout", "history": "📜 History" },
+            "header": { "title": "FANDOM PIXEL", "subtitle": "1,000,000 PIXELS GLOBAL STAGE", "login": "Google Login", "logout": "Logout", "history": "📜 History" },
             "sidebar": { "status_available": "Available", "status_occupied": "Occupied", "owner": "Owner", "idol": "Idol", "none": "None", "description": "Subscribe to this pixel to claim territory for your artist.", "label_nickname": "Nickname", "placeholder_nickname": "Login Required", "label_group": "Group", "price_label": "Price:", "total_subscription_fee": "Total Subscription Fee", "btn_subscribe": "Subscribe Pixel", "area_selected": "Area Selected" },
             "ranking": { "title": "🏆 Fandom<br>Ranking", "loading": "Loading..." },
             "statusbar": { "notice": "📢 Notice", "help": "[F1] Help" },
@@ -67,7 +67,7 @@ class I18n {
 
         if (lang === 'ko') {
             // Apply Korean overrides to defaults
-            defaults.header = { "title": "FANDOM PIXEL", "subtitle": "10,000,000 PIXELS GLOBAL STAGE", "login": "Google 로그인", "logout": "로그아웃", "history": "📜 내역" };
+            defaults.header = { "title": "FANDOM PIXEL", "subtitle": "1,000,000 PIXELS GLOBAL STAGE", "login": "Google 로그인", "logout": "로그아웃", "history": "📜 내역" };
             defaults.sidebar = { "status_available": "구독 가능", "status_occupied": "점령됨", "owner": "소유자", "idol": "아이돌", "none": "없음", "description": "이 픽셀을 구독하여 당신의 아티스트를 위한 영토로 선포하세요.", "label_nickname": "닉네임", "placeholder_nickname": "로그인이 필요합니다", "label_group": "그룹", "price_label": "결제 금액:", "total_subscription_fee": "총 구독료", "btn_subscribe": "픽셀 구독하기" };
             defaults.ranking = { "title": "🏆 Fandom<br>Ranking", "loading": "랭킹 로딩중..." };
             defaults.statusbar = { "notice": "📢 공지", "help": "[F1] 도움말" };
@@ -233,6 +233,21 @@ const purchaseForm = document.getElementById('purchase-form');
 const nicknameInput = document.getElementById('nickname-input');
 const idolSelect = document.getElementById('idol-select');
 const subscribeButton = document.getElementById('subscribe-button');
+const refundCheckBox = document.getElementById('refund-agree');
+
+if (refundCheckBox && subscribeButton) {
+    refundCheckBox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            subscribeButton.disabled = false;
+            subscribeButton.style.opacity = '1';
+            subscribeButton.style.cursor = 'pointer';
+        } else {
+            subscribeButton.disabled = true;
+            subscribeButton.style.opacity = '0.5';
+            subscribeButton.style.cursor = 'not-allowed';
+        }
+    });
+}
 
 // Help Feature Elements
 const helpBtn = document.getElementById('help-btn');
@@ -305,24 +320,24 @@ if (!ownerStatsDiv) {
 
 const socket = io();
 
-// Updated to 10M pixels (63240x63240)
-const WORLD_SIZE = 63240;
+// Updated to 1M pixels (20000x20000)
+const WORLD_SIZE = 20000;
 const GRID_SIZE = 20;
 const MAX_GRID_START_COORD = Math.floor((WORLD_SIZE - 1) / GRID_SIZE) * GRID_SIZE;
 const EPSILON = 0.001;
 
 // --- Helper: Dynamic Pricing ---
 function getPixelPrice(x, y) {
-    const minCenter = 29620; // 31620 - 2000
-    const maxCenter = 33620; // 31620 + 2000
-    const minMid = 19620;    // 31620 - 12000
-    const maxMid = 43620;    // 31620 + 12000
+    const minCenter = 8000;  // 10000 - 2000
+    const maxCenter = 12000; // 10000 + 2000
+    const minMid = 4000;     // 10000 - 6000
+    const maxMid = 16000;    // 10000 + 6000
 
-    // High Value Zone (2000 KRW) - Center 4000x4000 area
+    // High Value Zone (2000 KRW) - Center 4000x4000 area (approx)
     if (x >= minCenter && x < maxCenter && y >= minCenter && y < maxCenter) {
         return 2000;
     }
-    // Mid Value Zone (1000 KRW) - Surrounding 12000x12000 area
+    // Mid Value Zone (1000 KRW)
     if (x >= minMid && x < maxMid && y >= minMid && y < maxMid) {
         return 1000;
     }
@@ -400,7 +415,9 @@ class ChunkManager {
         this.pendingChunks = new Set();
         this.requestQueue = [];
         this.activeRequests = 0;
-        this.maxConcurrentRequests = 6;
+        // OPTIMIZATION: Reduce concurrency on mobile to prevent network choking
+        const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        this.maxConcurrentRequests = isMobileDevice ? 2 : 6;
         this.controllers = new Map(); // Store AbortControllers
     }
 
@@ -409,79 +426,123 @@ class ChunkManager {
     // We only fetch binary pixel data if the user is zoomed in enough to interact.
 
     updateVisibleChunks(minX, minY, maxX, maxY) {
-        // TILE_SIZE = 256 world units
+        // TILE_SIZE = 256;
         const TILE_SIZE = 256;
+        const DATA_CHUNK_SIZE = 1000; // Coarser grid for data loading (performance)
 
-        // Convert world bounds to tile coordinates
-        const minTileX = Math.floor(minX / TILE_SIZE);
-        const minTileY = Math.floor(minY / TILE_SIZE);
-        const maxTileX = Math.floor(maxX / TILE_SIZE);
-        const maxTileY = Math.floor(maxY / TILE_SIZE);
+        // --- LOD (Level of Detail) Calculation for TILES ---
+        let targetZoom = 1;
+        if (scale < 1) {
+            targetZoom = Math.ceil(1 / scale);
+        }
+
+        const powerName = Math.log2(targetZoom);
+        let snappedZoom = Math.pow(2, Math.ceil(powerName));
+        if (snappedZoom < 1) snappedZoom = 1;
+        if (snappedZoom > 64) snappedZoom = 64;
+
+        const EFFECTIVE_SIZE = TILE_SIZE * snappedZoom;
+
+        // Convert world bounds to tile coordinates for this zoom level
+        const minTileX = Math.floor(minX / EFFECTIVE_SIZE);
+        const minTileY = Math.floor(minY / EFFECTIVE_SIZE);
+        const maxTileX = Math.floor(maxX / EFFECTIVE_SIZE);
+        const maxTileY = Math.floor(maxY / EFFECTIVE_SIZE);
 
         const currentTiles = new Set();
 
-        // Determine Load Mode: Image (Tiles) vs Data (Binary)
-        // If scale is large enough (e.g., > 1.0, meaning 1px >= 1 screen px), load data for interaction.
-        // Actually, users might want to see who owns a pixel even at lower zoom. 
-        // Let's set a threshold. scale=0.5 means 1 pixel = 0.5 screen pixels.
-        const LOAD_DATA_THRESHOLD = 0; // Force always load
-        const shouldLoadData = scale >= LOAD_DATA_THRESHOLD;
-
+        // --- Limit Requests ---
         const totalTiles = (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
-
-        // --- SAFETY LIMIT ---
-        // If zooming out too much, user would request 60,000+ tiles.
-        // We limit visible tiles to ~150. If more, we stop rendering or render a placeholder.
-        if (totalTiles > 200) {
-            // console.warn("[TMS] Too many tiles visible, skipping render for performance.");
-            return;
+        if (totalTiles > 300) {
+            return; // Still too many, wait for user to zoom/move
         }
 
+        // --- 1. Load Tile Images (LOD-aware) ---
         for (let y = minTileY; y <= maxTileY; y++) {
             for (let x = minTileX; x <= maxTileX; x++) {
-                const key = `${x},${y}`;
+                const key = `${x},${y},${snappedZoom}`;
                 currentTiles.add(key);
 
-                // 1. Load Tile Image (Always, for base layer)
                 if (!this.loadedChunks.has(key) && !this.pendingChunks.has(key)) {
                     this.pendingChunks.add(key);
-                    // Load Image
+
                     const img = new Image();
-                    img.src = `/api/pixels/tile?x=${x}&y=${y}&t=${Date.now()}`; // Add timestamp to bypass cache if needed, or rely on Cache-Control
+                    img.src = `/api/pixels/tile?x=${x}&y=${y}&zoom=${snappedZoom}`;
+
                     img.onload = () => {
-                        chunkImages.set(key, img); // caching image directly
+                        chunkImages.set(key, {
+                            img: img,
+                            x: x,
+                            y: y,
+                            zoom: snappedZoom,
+                            worldSize: EFFECTIVE_SIZE
+                        });
                         this.loadedChunks.add(key);
                         this.pendingChunks.delete(key);
                         needsRedraw = true;
                     };
                     img.onerror = () => {
                         this.pendingChunks.delete(key);
-                        // Retry?
                     };
-                }
-
-                // 2. Load Binary Data (Only if high zoom) for interaction info
-                if (shouldLoadData) {
-                    const dataKey = `data_${key}`;
-                    if (!pixelChunks.has(key) && !this.pendingChunks.has(dataKey)) {
-                        this.pendingChunks.add(dataKey);
-                        // Fetch Data
-                        // We can reuse fetchChunk but need to adapt it to tile coordinates
-                        // TILE_SIZE (256) != Old Chunk Size (1000). 
-                        // The server /api/pixels/chunk expects minX, maxX etc.
-                        const dMinX = x * TILE_SIZE;
-                        const dMinY = y * TILE_SIZE;
-                        const dMaxX = dMinX + TILE_SIZE;
-                        const dMaxY = dMinY + TILE_SIZE;
-
-                        this.fetchChunkData(x, y, dMinX, dMinY, dMaxX, dMaxY, dataKey);
-                    }
                 }
             }
         }
 
-        // Cleanup Off-screen Tiles (Optional, for memory)
-        // ... (Keep existing cleanup logic if desired, adapted for images)
+        // --- 2. Load Data (Always, for Interaction & Labels) ---
+        // Dynamically scale data chunk size by zoom level to prevent request flooding
+        // Use snappedZoom (powers of 2) for stability to avoid cache thrashing during zoom animations
+        let dataChunkScale = snappedZoom;
+
+        // Clamp data scale to avoid excessively huge DB queries
+        // Max 16x = 16,000px chunk size
+        if (dataChunkScale > 16) dataChunkScale = 16;
+
+        const CURRENT_DATA_CHUNK_SIZE = DATA_CHUNK_SIZE * dataChunkScale;
+
+        const minDataX = Math.floor(minX / CURRENT_DATA_CHUNK_SIZE);
+        const minDataY = Math.floor(minY / CURRENT_DATA_CHUNK_SIZE);
+        const maxDataX = Math.floor(maxX / CURRENT_DATA_CHUNK_SIZE);
+        const maxDataY = Math.floor(maxY / CURRENT_DATA_CHUNK_SIZE);
+
+        for (let dy = minDataY; dy <= maxDataY; dy++) {
+            for (let dx = minDataX; dx <= maxDataX; dx++) {
+                // Key needs to include scale so we don't mix up granular vs coarse data chunks?
+                // Actually, if we use coarse chunks, we might want to cache them differently.
+                // But for now, let's just use unique keys.
+                const dataKey = `data_${dx},${dy}_${dataChunkScale}`;
+
+                // pixelChunks uses the data grid key
+                if (!pixelChunks.has(dataKey) && !this.pendingChunks.has(dataKey)) {
+                    this.pendingChunks.add(dataKey);
+
+                    const dMinX = dx * CURRENT_DATA_CHUNK_SIZE;
+                    const dMinY = dy * CURRENT_DATA_CHUNK_SIZE;
+                    const dMaxX = dMinX + CURRENT_DATA_CHUNK_SIZE;
+                    const dMaxY = dMinY + CURRENT_DATA_CHUNK_SIZE;
+
+                    this.fetchChunkData(dx, dy, dMinX, dMinY, dMaxX, dMaxY, dataKey);
+                }
+            }
+        }
+
+        // Cleanup Logic (Aggressive to save memory on mobile)
+        // Remove tiles that are not in current visible set AND not in immediate parent/child levels?
+        // For simplicity: Remove any tile NOT in currentTiles. 
+        // Actually, preventing flicker: keep tiles from other zoom levels?
+        // Let's just keep tiles that are "Close" to viewport?
+        // Simple Cleanup:
+        for (const key of this.loadedChunks) {
+            if (!currentTiles.has(key)) {
+                // Check if it's really far away?
+                // For now, just remove to keep memory low. 
+                // Maybe keep a small buffer?
+                // Lets just remove. 
+                if (this.pendingChunks.size === 0) { // Only clean if not busy loading
+                    this.loadedChunks.delete(key);
+                    chunkImages.delete(key);
+                }
+            }
+        }
     }
 
     async fetchChunkData(tx, ty, minX, minY, maxX, maxY, key) {
@@ -503,12 +564,12 @@ class ChunkManager {
                     const pKey = `${p.x},${p.y}`;
                     pixelMap.set(pKey, p);
                 });
+                requestClusterUpdate(); // Trigger label generation
                 needsRedraw = true; // Force redraw after loading
             }
 
-            // Mark data as loaded for this tile
-            // Also store count or some meta if needed
-            pixelChunks.set(`${tx},${ty}`, true);
+            // Mark data as loaded for this chunk
+            pixelChunks.set(key, true); // Use the passed key (data_dx,dy format)
 
         } catch (e) {
             if (e.name === 'AbortError') {
@@ -753,23 +814,30 @@ function _render() {
     ctx.scale(scale, scale);
 
     // Background
+    // Background
     ctx.fillStyle = '#0a0f19';
     ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
 
     // --- Dynamic Pricing Zones (Visual Guide) ---
-    // Mid Value Zone (1000 KRW) - Center +/- 12000
+    // Mid Value Zone (1000 KRW) - Range 4000 to 16000 (Size 12000)
     ctx.fillStyle = 'rgba(0, 100, 255, 0.05)';
-    ctx.fillRect(19620, 19620, 24000, 24000);
+    ctx.fillRect(4000, 4000, 12000, 12000);
+    // Border for Mid Zone
+    if (scale > 0.05) {
+        ctx.strokeStyle = 'rgba(0, 100, 255, 0.2)';
+        ctx.lineWidth = 1 / scale;
+        ctx.strokeRect(4000, 4000, 12000, 12000);
+    }
 
-    // High Value Zone (2000 KRW) - Center +/- 2000
+    // High Value Zone (2000 KRW) - Range 8000 to 12000 (Size 4000)
     ctx.fillStyle = 'rgba(255, 215, 0, 0.08)';
-    ctx.fillRect(29620, 29620, 4000, 4000);
+    ctx.fillRect(8000, 8000, 4000, 4000);
 
     // Optional: Border for High Value Zone
     if (scale > 0.05) {
         ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
         ctx.lineWidth = 2 / scale;
-        ctx.strokeRect(29620, 29620, 4000, 4000);
+        ctx.strokeRect(8000, 8000, 4000, 4000);
     }
 
     // Calculate Visible Viewport
@@ -785,7 +853,8 @@ function _render() {
     ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
 
 
-    // Trigger Loads (Only if zoomed in)
+    // Trigger Loads (Only if zoomed in OR if initial load needed)
+    // TILE_SIZE = 256;
     chunkManager.updateVisibleChunks(minVisibleX, minVisibleY, maxVisibleX, maxVisibleY);
 
     // Draw Grid (Limit to viewport, Fade out logic)
@@ -823,56 +892,62 @@ function _render() {
     // Disable image smoothing for crisp pixels
     ctx.imageSmoothingEnabled = false;
 
-    // --- Draw Tile Images ---
-    // Iterate over visible tiles
-    const TILE_SIZE = 256;
-    const viewMinX = minVisibleX; // Use the already calculated minVisibleX/Y
-    const viewMinY = minVisibleY;
-    const viewMaxX = maxVisibleX;
-    const viewMaxY = maxVisibleY;
+    // --- Draw Tile Images (LOD Aware) ---
+    // Iterate over loaded images and draw them
+    // chunkImages values are now objects: { img, x, y, zoom, worldSize }
 
-    const startTileX = Math.floor(viewMinX / TILE_SIZE);
-    const startTileY = Math.floor(viewMinY / TILE_SIZE);
-    const endTileX = Math.floor(viewMaxX / TILE_SIZE);
-    const endTileY = Math.floor(viewMaxY / TILE_SIZE);
+    ctx.imageSmoothingEnabled = false; // Keep pixel art look
 
-    for (let ty = startTileY; ty <= endTileY; ty++) {
-        for (let tx = startTileX; tx <= endTileX; tx++) {
-            const key = `${tx},${ty}`;
-            const img = chunkImages.get(key);
-            if (img && img.complete) {
-                // Determine destination on canvas
-                // World coordinates of tile:
-                const wX = tx * TILE_SIZE;
-                const wY = ty * TILE_SIZE;
-
-                // Screen coordinates
-                // Note: p.x * GRID_SIZE? No. TILE_SIZE=256 is correct if 1 world unit = 1 pixel.
-                // But earlier we saw `const chunkMinX = cx * this.chunkSize`.
-                // wait, if TILE_SIZE=256, and we draw it.
-                // Does 1 unit in X mean 20 pixels on screen?
-                // The GRID_SIZE is 20.
-                // If the DB x is 0, drawing at screen x = 0.
-                // If DB x is 1, drawing at screen x = 20.
-                // So the *World Coordinate System* used in Logic is `x * GRID_SIZE`.
-
-                // If the server generated a 256x256 PNG for x=0..256, y=0..256 range.
-                // That cover 256 "cells".
-                // On canvas, that covers 256 * GRID_SIZE pixels.
-
-                const screenX = (wX * GRID_SIZE * scale) + offsetX;
-                const screenY = (wY * GRID_SIZE * scale) + offsetY;
-                const screenW = TILE_SIZE * GRID_SIZE * scale;
-                const screenH = TILE_SIZE * GRID_SIZE * scale;
-
-                // Optimization: Don't draw if off-screen (handled by loop indices mostly)
-                // Draw Image
-                // We must use `imageSmoothingEnabled = false` for pixel art look
-                ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(img, screenX, screenY, screenW, screenH);
-            }
+    chunkImages.forEach((tileData, key) => {
+        // Graceful fallback if tileData is just an image (legacy/transition)
+        let img, x, y, zoom, worldSize;
+        if (tileData instanceof HTMLImageElement) {
+            // Shouldn't happen if reload, but safety:
+            img = tileData;
+            const parts = key.split(',');
+            x = parseInt(parts[0]);
+            y = parseInt(parts[1]);
+            zoom = 1;
+            worldSize = 256;
+        } else {
+            ({ img, x, y, zoom, worldSize } = tileData);
         }
-    }
+
+        if (!img || !img.complete) return;
+
+        // Calculate World Position (Top-Left)
+        // Note: x, y are tile indices.
+        // worldSize is world units (e.g. 256, 512...)
+        const worldX = x * worldSize;
+        const worldY = y * worldSize;
+
+        // Calculate Screen Position for Culling (MANUAL check against canvas bounds)
+        // Since we are inside a TRANSFORMED context (scale, translate),
+        // we can draw directly at (worldX, worldY) with size (worldSize, worldSize).
+        // BUT, culling needs manual calculation to be efficient.
+
+        // Manual Screen Projection for Culling:
+        const screenX = (worldX * scale) + offsetX;
+        const screenY = (worldY * scale) + offsetY;
+        const screenW = worldSize * scale;
+        const screenH = worldSize * scale;
+
+        // Simple Culling
+        if (screenX + screenW < 0 || screenY + screenH < 0 ||
+            screenX > canvas.width || screenY > canvas.height) {
+            return;
+        }
+
+        // Draw in World Space!
+        // The context is already: translate(offsetX, offsetY) -> scale(scale, scale)
+        // So we just draw at (worldX, worldY).
+        // Also: remove "GRID_SIZE" multiplier. 
+        // 1 DB Unit = 1 World Pixel (as implied by WORLD_SIZE match).
+        // If GRID_SIZE was used for purely visual flair before, it should be removed for 
+        // accurate 1:1 map data representation.
+
+        ctx.drawImage(img, worldX, worldY, worldSize, worldSize);
+    });
 
 
     // --- Draw Live Pixels (Direct Map Iteration) ---
@@ -881,6 +956,13 @@ function _render() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     let debugCount = 0;
+
+    // Define Viewport Bounds in World Coordinates for Culling
+    const viewMinX = -offsetX / scale;
+    const viewMinY = -offsetY / scale;
+    const viewMaxX = (window.innerWidth - offsetX) / scale;
+    const viewMaxY = (window.innerHeight - offsetY) / scale;
+
     pixelMap.forEach(p => {
         // Simple View Culling
         if (p.x >= viewMinX && p.x <= viewMaxX && p.y >= viewMinY && p.y <= viewMaxY) {
@@ -1110,7 +1192,13 @@ async function fetchAllPixels() {
 }
 
 // Start
-fetchAllPixels();
+// Start
+// fetchAllPixels(); // OPTIMIZATION: Removed eager full load
+// Only update ranking board initially
+updateRankingBoard();
+
+// Initial Draw will encounter empty data -> lazy load via draw() -> chunkManager
+draw(); // This will trigger _render which calls updateVisibleChunks
 updateRankingBoard();
 draw(); // This will trigger _render
 
@@ -1407,23 +1495,7 @@ window.onmouseup = (e) => {
 
 
 // --- Pricing Logic ---
-function getPixelPrice(x, y) {
-    // Calculate distance from center (Square / Chebyshev Distance for Grid)
-    const centerX = WORLD_SIZE / 2;
-    const centerY = WORLD_SIZE / 2;
 
-    // Use Box Radius instead of Circle Radius
-    const dist = Math.max(Math.abs(x - centerX), Math.abs(y - centerY));
-
-    // Zone 1: High Value (Center +/- 2000px box) - 2000 KRW
-    if (dist <= 2000) return 2000;
-
-    // Zone 2: Mid Value (Center +/- 12000px box) - 1000 KRW
-    if (dist <= 12000) return 1000;
-
-    // Zone 3: Standard (Rest of the world) - 500 KRW
-    return 500;
-}
 
 function updateSidePanel(singleOwnedPixel = null) {
 
@@ -1453,6 +1525,16 @@ function updateSidePanel(singleOwnedPixel = null) {
 
         if (unownedInSelection.length > 0) { // There are unowned pixels
             purchaseForm.style.display = 'block';
+
+            // --- Refund Policy Agreement Reset ---
+            const refundAgree = document.getElementById('refund-agree');
+            const subBtn = document.getElementById('subscribe-button');
+            if (refundAgree && subBtn) {
+                refundAgree.checked = false;
+                subBtn.disabled = true;
+                subBtn.style.opacity = '0.5';
+                subBtn.style.cursor = 'not-allowed';
+            }
 
             // Auto-fill Nickname if Logged In
 
@@ -2069,19 +2151,7 @@ canvas.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 function updateMinimap() {
-    const container = document.getElementById('minimap-container');
-    const mv = document.getElementById('minimap-view');
-    if (!container || !mv) return;
-
-    // Use actual container size (minus borders if needed, but offsetWidth is usually safe for this calc)
-    // Minimap is a square, so width is sufficient
-    const mmSize = container.offsetWidth;
-    const mmScale = mmSize / WORLD_SIZE;
-
-    mv.style.width = (window.innerWidth / scale * mmScale) + 'px';
-    mv.style.height = (window.innerHeight / scale * mmScale) + 'px';
-    mv.style.left = (-offsetX / scale * mmScale) + 'px';
-    mv.style.top = (-offsetY / scale * mmScale) + 'px';
+    return;
 }
 
 window.addEventListener('keydown', (e) => {

@@ -74,12 +74,156 @@ try {
 
 // (Moved to io.on connection block below)
 
+const SQLiteStore = require('connect-sqlite3')(session);
+
+// ... (previous imports)
+
 app.use(session({
+    store: new SQLiteStore({ db: 'sessions.db', dir: '.' }), // Persist sessions in SQLite
     secret: process.env.SESSION_SECRET || 'dev_secret_key',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false } // Set to true if behind HTTPS
+    cookie: {
+        secure: false, // Set true if HTTPS
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 1 week
+    }
 }));
+
+// --- Helper: Color Parser (Hex & RGBA) ---
+function parseColor(colorStr) {
+    let r = 0, g = 0, b = 0;
+    if (!colorStr) return { r, g, b };
+
+    if (colorStr.startsWith('#')) {
+        // Hex
+        if (colorStr.length === 7) {
+            r = parseInt(colorStr.substring(1, 3), 16) || 0;
+            g = parseInt(colorStr.substring(3, 5), 16) || 0;
+            b = parseInt(colorStr.substring(5, 7), 16) || 0;
+        }
+    } else if (colorStr.startsWith('rgba') || colorStr.startsWith('rgb')) {
+        // RGBA / RGB: rgba(0, 123, 255, 0.9)
+        const parts = colorStr.match(/\d+/g);
+        if (parts && parts.length >= 3) {
+            r = parseInt(parts[0]);
+            g = parseInt(parts[1]);
+            b = parseInt(parts[2]);
+        }
+    }
+    return { r, g, b };
+}
+
+// ... (middleware) ...
+
+// NEW: Chunk Loading API
+app.get('/api/pixels/chunk', (req, res) => {
+    let { minX, minY, maxX, maxY } = req.query;
+
+    if (minX === undefined || minY === undefined || maxX === undefined || maxY === undefined) {
+        return res.status(400).json({ error: 'Missing bounds parameters' });
+    }
+
+    // Bounds validation
+    minX = Number(minX); minY = Number(minY);
+    maxX = Number(maxX); maxY = Number(maxY);
+
+    try {
+        const stmt = db.prepare('SELECT * FROM pixels WHERE x >= ? AND x < ? AND y >= ? AND y < ?');
+        const rows = stmt.all(minX, maxX, minY, maxY);
+
+        res.set('Cache-Control', 'public, max-age=10');
+
+        if (req.query.format === 'json') {
+            return res.json(rows);
+        }
+
+        const buffers = [];
+        for (const p of rows) {
+            const { r, g, b } = parseColor(p.color);
+
+            let groupBuf = Buffer.from(p.idol_group_name || '');
+            if (groupBuf.length > 255) groupBuf = groupBuf.subarray(0, 255);
+
+            let ownerBuf = Buffer.from(p.owner_nickname || '');
+            if (ownerBuf.length > 255) ownerBuf = ownerBuf.subarray(0, 255);
+
+            const buf = Buffer.alloc(2 + 2 + 3 + 1 + groupBuf.length + 1 + ownerBuf.length);
+            let offset = 0;
+            buf.writeUInt16BE(p.x, offset); offset += 2;
+            buf.writeUInt16BE(p.y, offset); offset += 2;
+            buf.writeUInt8(r, offset); offset += 1;
+            buf.writeUInt8(g, offset); offset += 1;
+            buf.writeUInt8(b, offset); offset += 1;
+
+            buf.writeUInt8(groupBuf.length, offset); offset += 1;
+            if (groupBuf.length > 0) {
+                groupBuf.copy(buf, offset); offset += groupBuf.length;
+            }
+
+            buf.writeUInt8(ownerBuf.length, offset); offset += 1;
+            if (ownerBuf.length > 0) {
+                ownerBuf.copy(buf, offset); offset += ownerBuf.length;
+            }
+            buffers.push(buf);
+        }
+        res.set('Content-Type', 'application/octet-stream');
+        res.send(Buffer.concat(buffers));
+    } catch (err) {
+        console.error("Error fetching chunk:", err);
+        res.status(500).send(err.message);
+    }
+});
+
+app.get('/api/pixels/tile', (req, res) => {
+    const tx = parseInt(req.query.x);
+    const ty = parseInt(req.query.y);
+    const zoom = parseInt(req.query.zoom) || 1;
+
+    // Standard Tile Size
+    const TILE_SIZE = 256;
+    const EFFECTIVE_SIZE = TILE_SIZE * zoom;
+
+    const minX = tx * EFFECTIVE_SIZE;
+    const minY = ty * EFFECTIVE_SIZE;
+    const maxX = minX + EFFECTIVE_SIZE;
+    const maxY = minY + EFFECTIVE_SIZE;
+
+    try {
+        const stmt = db.prepare(`SELECT x, y, color FROM pixels WHERE x >= ? AND x < ? AND y >= ? AND y < ?`);
+        const rows = stmt.all(minX, maxX, minY, maxY);
+
+        const png = new PNG({ width: TILE_SIZE, height: TILE_SIZE });
+
+        for (const p of rows) {
+            const lx = p.x - minX;
+            const ly = p.y - minY;
+
+            // Scale down to 256x256
+            const targetX = Math.floor(lx / zoom);
+            const targetY = Math.floor(ly / zoom);
+
+            if (targetX < 0 || targetX >= TILE_SIZE || targetY < 0 || targetY >= TILE_SIZE) continue;
+
+            const { r, g, b } = parseColor(p.color);
+
+            const idx = (targetY * TILE_SIZE + targetX) << 2;
+
+            // Simple Draw (Overwrite)
+            png.data[idx] = r;
+            png.data[idx + 1] = g;
+            png.data[idx + 2] = b;
+            png.data[idx + 3] = 255; // Alpha
+        }
+
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=60');
+        png.pack().pipe(res);
+
+    } catch (err) {
+        console.error("Error generating tile:", err);
+        res.status(500).send("Tile Error");
+    }
+});
 
 app.use(passport.initialize());
 app.use(passport.session());
@@ -143,12 +287,13 @@ if (process.env.GOOGLE_CLIENT_ID) {
 
 
 // --- Helper: Dynamic Pricing ---
+// --- Helper: Dynamic Pricing ---
 function getPixelPrice(x, y) {
-    // Center based on WORLD_SIZE 63240 -> Center 31620
-    const minCenter = 29620;
-    const maxCenter = 33620;
-    const minMid = 25620;
-    const maxMid = 37620;
+    // Center based on WORLD_SIZE 20000 -> Center 10000
+    const minCenter = 8000;
+    const maxCenter = 12000;
+    const minMid = 4000;
+    const maxMid = 16000;
 
     if (x >= minCenter && x < maxCenter && y >= minCenter && y < maxCenter) {
         return 2000;
@@ -156,6 +301,7 @@ function getPixelPrice(x, y) {
     if (x >= minMid && x < maxMid && y >= minMid && y < maxMid) {
         return 1000;
     }
+    // All other areas: 500 KRW
     return 500;
 }
 
@@ -389,43 +535,50 @@ const { PNG } = require('pngjs');
 // In main.js: const chunkMinX = cx * this.chunkSize;
 // Data Schema: x, y are INTEGERS.
 // Let's assume 1 Tile = 256x256 DB units.
+// NEW: Tile Map Service (TMS) Endpoint with LOD
 app.get('/api/pixels/tile', (req, res) => {
     const tx = parseInt(req.query.x);
     const ty = parseInt(req.query.y);
-    const zoom = parseInt(req.query.zoom) || 1;
+    const zoom = parseInt(req.query.zoom) || 1; // 1 = 1:1, 2 = 2:1 (512px -> 256px), etc.
 
-    // Define Tile Size in "World Units"
-    // If we want fine-grained tiles, 1 tile = 256 units.
+    // Standard Tile Size
     const TILE_SIZE = 256;
 
-    // Calculate bounds
-    const minX = tx * TILE_SIZE;
-    const minY = ty * TILE_SIZE;
-    const maxX = minX + TILE_SIZE;
-    const maxY = minY + TILE_SIZE;
+    // Effective World Area Covered by this Tile
+    // At zoom=1, covers 256x256 world pixels
+    // At zoom=2, covers 512x512 world pixels (scaled down)
+    // At zoom=16, covers 4096x4096 world pixels
+    const EFFECTIVE_SIZE = TILE_SIZE * zoom;
+
+    // Calculate world bounds
+    const minX = tx * EFFECTIVE_SIZE;
+    const minY = ty * EFFECTIVE_SIZE;
+    const maxX = minX + EFFECTIVE_SIZE;
+    const maxY = minY + EFFECTIVE_SIZE;
 
     try {
-        // Fetch pixels in this tile
-        // Use Index to be fast
+        // Fetch pixels in this LARGE area
+        // Use Index to be fast (still fast because sparse data)
         const stmt = db.prepare(`SELECT x, y, color FROM pixels WHERE x >= ? AND x < ? AND y >= ? AND y < ?`);
         const rows = stmt.all(minX, maxX, minY, maxY);
 
-        // Create PNG
+        // Create PNG (Always 256x256)
         const png = new PNG({ width: TILE_SIZE, height: TILE_SIZE });
 
         // Fill background (Transparent)
-        // pngjs defaults to black transparent (0,0,0,0)
 
-        // Draw Pixels
-        // Each DB pixel is drawn as 1x1 pixel on the tile for now. 
-        // If main.js zooms in, it might look tiny. But logic says "Client loads images".
-        // Use 1:1 mapping for simplicity.
-
+        // Draw Pixels with Scaling
         for (const p of rows) {
+            // Calculate position relative to the large area
             const lx = p.x - minX;
-            const ly = p.y - minY;
+            const ly = p.y - minY; // Removed local variable redeclaration
 
-            if (lx < 0 || lx >= TILE_SIZE || ly < 0 || ly >= TILE_SIZE) continue;
+            // Scale down to 256x256
+            // e.g. lx=100, zoom=2 -> targetX = 50
+            const targetX = Math.floor(lx / zoom);
+            const targetY = Math.floor(ly / zoom);
+
+            if (targetX < 0 || targetX >= TILE_SIZE || targetY < 0 || targetY >= TILE_SIZE) continue;
 
             let r = 0, g = 0, b = 0;
             if (p.color && p.color.startsWith('#') && p.color.length === 7) {
@@ -434,7 +587,10 @@ app.get('/api/pixels/tile', (req, res) => {
                 b = parseInt(p.color.substring(5, 7), 16) || 0;
             }
 
-            const idx = (ly * TILE_SIZE + lx) << 2;
+            const idx = (targetY * TILE_SIZE + targetX) << 2;
+
+            // Simple Draw (Overwrite) - Ideally could blend or take average for LOD
+            // But for pixel art, sampling/overwrite is acceptable for speed
             png.data[idx] = r;
             png.data[idx + 1] = g;
             png.data[idx + 2] = b;
@@ -442,7 +598,7 @@ app.get('/api/pixels/tile', (req, res) => {
         }
 
         res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Cache-Control', 'public, max-age=60'); // Cache tiles for 1 min
+        res.setHeader('Cache-Control', 'public, max-age=60');
         png.pack().pipe(res);
 
     } catch (err) {

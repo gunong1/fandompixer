@@ -493,12 +493,7 @@ h1 {
     }
 
     /* Adjust Minimap */
-    #minimap-container {
-        width: 80px !important;
-        height: 80px !important;
-        bottom: 20px !important;
-        right: 10px !important;
-    }
+
 }
 
 @keyframes slideUp {
