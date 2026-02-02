@@ -1,8 +1,8 @@
 // --- I18n Manager ---
 // Hardcode PortOne Init for Stability
-const IMP = window.IMP;
-if (IMP) {
-    IMP.init("imp02261832");
+// Hardcode PortOne Init for Stability
+if (window.IMP) {
+    window.IMP.init("imp02261832");
     console.log("[Payment] IMP initialized with hardware code");
 }
 
