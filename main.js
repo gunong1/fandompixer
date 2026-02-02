@@ -2042,19 +2042,20 @@ subscribeButton.onclick = async () => {
         }
 
         // --- SDK Check ---
-        if (typeof PortOne === 'undefined') {
-            throw new Error("결제 모듈(PortOne)이 로드되지 않았습니다. 페이지를 새로고침 해주세요.");
+        if (!window.IMP) {
+            throw new Error("결제 모듈(IMP)이 로드되지 않았습니다. 페이지를 새로고침 해주세요.");
         }
 
         // --- Payment Config Fetch ---
-        let paymentConfig;
+        let paymentConfig = {}; // Default empty to prevent crash
         try {
             const configRes = await fetch('/api/config/payment');
-            paymentConfig = await configRes.json();
+            if (configRes.ok) {
+                paymentConfig = await configRes.json();
+            }
         } catch (e) {
-            console.error("Failed to load payment config:", e);
-            alert("결제 설정을 불러오는데 실패했습니다.");
-            return;
+            console.warn("Failed to load payment config, using defaults:", e);
+            // Non-blocking failure
         }
 
         const totalAmount = pixelsToSend.reduce((sum, p) => sum + getPixelPrice(p.x, p.y), 0);
