@@ -1983,67 +1983,66 @@ subscribeButton.onclick = async () => {
         // Default to KRW Channel (Inicis)
         let targetChannelKey = paymentConfig.channelKey;
 
-        // Base Request Object
-        const paymentRequest = {
-            storeId: paymentConfig.storeId, // Loaded from Server
-            paymentId: paymentId,
-            orderName: `Idolpixel: ${pixelsToSend.length} pixels`,
-            customer: {
-                fullName: nickname,
-                phoneNumber: "010-0000-0000", // Required by KG Inicis V2
-                email: currentUser ? currentUser.email : undefined,
-            },
-            // Note: totalAmount is set below
-        };
+        // Base Request (Common Fields)
+        let paymentRequest = {};
 
         if (i18n.locale === 'en') {
-            // USD Logic (Global - PayPal)
-            const exchangeRate = 1000;
-            let usdDollars = totalAmount / exchangeRate;
-            let usdCents = Math.round(usdDollars * 100);
+            // --- USD Logic (Global - PayPal) ---
+            // Exchange Rate: 1450 KRW = 1 USD
+            const exchangeRate = 1450;
+            // Calculate Float Amount (e.g. 66.21)
+            let usdAmount = Number((totalAmount / exchangeRate).toFixed(2));
 
             // Enforce Minimum $0.01
-            if (usdCents < 1) usdCents = 1;
+            if (usdAmount < 0.01) usdAmount = 0.01;
 
-            finalAmount = usdCents;
+            finalAmount = usdAmount;
             finalCurrency = "USD";
 
-            // USE GLOBAL KEY (PayPal)
+            // Determine Channel Key (PayPal)
             if (paymentConfig.channelKeyGlobal) {
                 targetChannelKey = paymentConfig.channelKeyGlobal;
             } else {
                 console.warn("[PAYMENT] Global Channel Key missing, falling back to default.");
             }
 
-            paymentRequest.totalAmount = finalAmount;
-            paymentRequest.currency = "USD";
-            paymentRequest.channelKey = targetChannelKey;
-
-            // --- STRICT PAYPAL CONFIGURATION ---
-            paymentRequest.payMethod = "PAYPAL";
-            paymentRequest.country = "US";
-
-            // Remove any potential KRW-specific fields
-            delete paymentRequest.cardQuota;
-            delete paymentRequest.escrow;
-            delete paymentRequest.bypass;
-
-            paymentRequest.windowType = {
-                pc: 'IFRAME',
-                mobile: 'POPUP'
+            // [WHITELIST STRATEGY] Construct clean object for PayPal
+            paymentRequest = {
+                storeId: paymentConfig.storeId,
+                paymentId: paymentId,
+                orderName: `Idolpixel: ${pixelsToSend.length} pixels`,
+                totalAmount: finalAmount,
+                currency: "USD",
+                channelKey: targetChannelKey,
+                payMethod: "PAYPAL", // Explicit Enum
+                windowType: {
+                    pc: 'IFRAME',
+                    mobile: 'POPUP'
+                }
+                // NO customer (phone), cardQuota, escrow, bypass here!
             };
+
         } else {
-            // KRW Logic (Domestic - Inicis)
+            // --- KRW Logic (Domestic - Inicis) ---
             finalAmount = totalAmount;
             finalCurrency = "KRW";
             targetChannelKey = paymentConfig.channelKey;
 
-            paymentRequest.totalAmount = finalAmount;
-            paymentRequest.currency = "KRW";
-            paymentRequest.channelKey = targetChannelKey;
-
-            // --- STRICT KRW CONFIGURATION ---
-            paymentRequest.payMethod = "CARD";
+            // Construct standard object for KRW
+            paymentRequest = {
+                storeId: paymentConfig.storeId,
+                paymentId: paymentId,
+                orderName: `Idolpixel: ${pixelsToSend.length} pixels`,
+                totalAmount: finalAmount,
+                currency: "KRW",
+                channelKey: targetChannelKey,
+                payMethod: "CARD",
+                customer: {
+                    fullName: nickname,
+                    phoneNumber: "010-0000-0000", // Required by KG Inicis V2
+                    email: currentUser ? currentUser.email : undefined,
+                }
+            };
         }
 
 
