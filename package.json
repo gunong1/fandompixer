@@ -4,9 +4,7 @@
   "description": "",
   "main": "main.js",
   "scripts": {
-    "start": "node init-db.js && node server.js",
-    "seed": "node seed.js",
-    "reset": "node reset-canvas.js",
+    "start": "echo Starting... && node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
