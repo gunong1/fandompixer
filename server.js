@@ -10,7 +10,7 @@ const MongoStore = require('connect-mongo').default;
 const app = express();
 app.set('trust proxy', 1);
 const compression = require('compression');
-app.use(compression());
+app.use(compression({ threshold: 0 })); // Compress ALL responses
 app.use('/locales', express.static(path.join(__dirname, 'locales')));
 app.use(express.static(__dirname));
 const http = require('http');
