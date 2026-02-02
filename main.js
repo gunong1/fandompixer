@@ -2143,50 +2143,57 @@ subscribeButton.onclick = async () => {
 
         } else {
             // ============================================================
-            // 2. KRW Logic (Domestic - Inicis) -> V2 SDK (PortOne)
+            // 2. KRW Logic (Domestic - Inicis) -> V1 SDK (IMP) [RESTORED]
             // ============================================================
             finalAmount = totalAmount;
             finalCurrency = "KRW";
-            targetChannelKey = paymentConfig.channelKey;
 
-            console.log(`[PAYMENT] Mode: KRW(Inicis V2), Channel: ${targetChannelKey}, Amount: ${finalAmount}`);
+            console.log(`[PAYMENT] Mode: KRW(Inicis V1), Amount: ${finalAmount}`);
 
-            const paymentRequest = {
-                storeId: paymentConfig.storeId,
-                paymentId: paymentId,
-                orderName: `Idolpixel: ${pixelsToSend.length} pixels`,
-                totalAmount: finalAmount,
-                currency: "KRW",
-                channelKey: targetChannelKey,
-                payMethod: "CARD",
-                customer: {
-                    fullName: nickname,
-                    phoneNumber: "010-0000-0000",
-                    email: currentUser ? currentUser.email : undefined,
-                }
-            };
+            const IMP = window.IMP;
+            IMP.init("imp02261832"); // Ensure Init
 
-            // Mobile Redirect Logic (Only for KRW/Inicis V2)
-            if (isMobile()) {
-                console.log("[PAYMENT] Mobile environment detected. Requesting Session Recovery Token...");
-                try {
-                    const tokenRes = await fetch('/api/auth/recovery-token', { method: 'POST' });
-                    if (tokenRes.ok) {
-                        const tokenData = await tokenRes.json();
-                        if (tokenData.token) {
-                            const returnUrl = new URL(window.location.origin + window.location.pathname);
-                            returnUrl.searchParams.set('restore_session', tokenData.token);
-                            paymentRequest.redirectUrl = returnUrl.toString();
+            response = await new Promise((resolve) => {
+                IMP.request_pay({
+                    pg: "html5_inicis",     // V1 Provider
+                    pay_method: "card",
+                    merchant_uid: paymentId,
+                    name: `Idolpixel: ${pixelsToSend.length} pixels`,
+                    amount: finalAmount,
+                    buyer_email: currentUser ? currentUser.email : undefined,
+                    buyer_name: nickname,
+                    buyer_tel: "010-0000-0000",
+                    m_redirect_url: window.location.href // Mobile Redirects
+                }, async function (rsp) { // PC/In-App Callback
+                    if (rsp.success) {
+                        console.log("[PAYMENT] V1 PC Auth Success. Verifying...", rsp.imp_uid);
+
+                        // Immediate Verification
+                        try {
+                            const vRes = await fetch('/api/verify-payment', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    imp_uid: rsp.imp_uid,
+                                    paymentId: paymentId
+                                })
+                            });
+                            const vData = await vRes.json();
+
+                            if (vData.success) {
+                                resolve(rsp); // Valid Success
+                            } else {
+                                resolve({ code: "VERIFY_FAIL", message: "서버 검증 실패: " + vData.message });
+                            }
+                        } catch (e) {
+                            resolve({ code: "VERIFY_ERR", message: "서버 통신 오류" });
                         }
                     } else {
-                        paymentRequest.redirectUrl = window.location.origin + window.location.pathname;
+                        console.error("[PAYMENT] V1 Failure:", rsp.error_msg);
+                        resolve({ code: "V1_FAIL", message: rsp.error_msg });
                     }
-                } catch (e) {
-                    paymentRequest.redirectUrl = window.location.origin + window.location.pathname;
-                }
-            }
-
-            response = await PortOne.requestPayment(paymentRequest);
+                });
+            });
         }
 
         if (response.code !== undefined) {
