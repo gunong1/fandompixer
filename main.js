@@ -653,7 +653,7 @@ class ChunkManager {
                     const pKey = `${p.x},${p.y}`;
                     pixelMap.set(pKey, p);
                 });
-                requestClusterUpdate(); // Trigger label generation
+                requestClusterUpdate(); // Trigger label generation & Stats
 
                 // [FIX] Force immediate synchronous render - Bypassing lazy draw
                 needsRedraw = true;
@@ -2933,6 +2933,7 @@ function requestClusterUpdate() {
     if (clusterUpdateTimeout) clearTimeout(clusterUpdateTimeout);
     clusterUpdateTimeout = setTimeout(() => {
         recalculateClusters();
+        recalculateStats(); // [FIX] Ensure stats are updated with clusters
         draw();
     }, 500); // Debounce 500ms
 }
