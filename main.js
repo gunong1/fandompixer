@@ -2039,7 +2039,7 @@ subscribeButton.onclick = async () => {
                 orderName: `Idolpixel: ${pixelsToSend.length} pixels`,
                 totalAmount: finalAmount,
                 currency: "USD",
-                payMethod: "PAYPAL" // Mandatory
+                payMethod: "EASY_PAY" // Changed to EASY_PAY
             };
 
             // Call Payment immediately (Bypassing mobile token logic which adds redirection clutter)
