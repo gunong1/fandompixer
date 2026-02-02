@@ -41,15 +41,15 @@ class I18n {
                 "help": { "title": "How to Use", "zoom": "Zoom In/Out", "move": "Move Canvas", "center": "Center View", "select": "Select Pixel", "multi_select": "Multi-select", "desc_zoom": "Mouse Wheel", "desc_move": "Ctrl + Drag", "desc_center": "Spacebar", "desc_select": "Click", "desc_multi_select": "Drag", "close": "Close" },
                 "notice": {
                     "title": "📢 Notice",
-                    "tab_intro": "Project Info",
-                    "tab_process": "Donation Process",
+                    "tab_intro": "Service Info",
+                    "tab_process": "Season Rewards",
                     "tab_refund": "Refund Policy",
                     "tab_faq": "FAQ",
                     "intro": {
-                        "headline": "Donation Project",
-                        "subline": "Global Fandom Project",
-                        "point1": "A portion of pixel sales proceeds is accumulated as donations.",
-                        "point2": "At the end of each season, a donation is made in the name of the #1 Fandom.",
+                        "headline": "Social Contribution Campaign",
+                        "subline": "Global Territory Battle",
+                        "point1": "A portion of pixel sales revenue is set aside for social contribution activities.",
+                        "point2": "At the end of each season, a special campaign is conducted in the name of the #1 Fandom.",
                         "point3": "Shine your fandom and share your warm heart!",
                         "season_info": {
                             "title": "📢 Season Info",
@@ -58,9 +58,9 @@ class I18n {
                             "desc2": "The map resets when a new season starts, but your records remain forever."
                         }
                     },
-                    "process": { "title": "Donation Process", "step1_title": "1. Donor Name", "step1_desc": "Donated in the name of the #1 Fandom.", "step2_title": "2. Amount Calculation", "step2_desc": "Percentage of proceeds accumulated.", "step3_title": "3. Beneficiary", "step3_desc": "Donated to themes selected each season.", "step4_title": "4. Result Reporting", "step4_desc": "Receipts released via SNS.", "step5_title": "5. Artist Promotion", "step5_desc": "News distributed via Twitter/Press." },
+                    "process": { "title": "Season Rewards & Process", "step1_title": "1. Winner Selection", "step1_desc": "The #1 Fandom in market share is selected at the end of each season.", "step2_title": "2. Fund Creation", "step2_desc": "A portion of proceeds (excluding costs) is contributed by the company as a public interest fund.", "step3_title": "3. Beneficiary Selection", "step3_desc": "Funds are delivered to season-selected themes (e.g., Crisis Relief, Environment) via reputable foundations.", "step4_title": "4. Campaign Report", "step4_desc": "Results and certificates are transparently released via Official SNS after the campaign ends.", "step5_title": "5. Artist Promotion", "step5_desc": "News of the #1 Fandom's campaign activity is distributed via Official Twitter (X) and press to spread positive influence." },
                     "refund": { "title": "Refund Policy", "desc_title": "Digital Asset Notice", "desc_text": "No refunds due to digital asset nature." },
-                    "faq": { "title": "❓ FAQ", "common": { "q1": "Q: Color didn't change?", "a1": "A: Refresh (F5).", "q2": "Q: PayPal?", "a2": "A: Yes.", "q3": "Q: Usage?", "a3": "A: Donated.", "q4": "Q: Ownership?", "a4": "A: 30 days.", "q5": "Q: Nickname?", "a5": "A: Fixed to Google." }, "sec_payment": "1. Payment", "sec_donation": "2. Donation", "sec_general": "3. General" }
+                    "faq": { "title": "❓ FAQ", "common": { "q1": "Q: Color didn't change?", "a1": "A: Refresh (F5).", "q2": "Q: PayPal?", "a2": "A: Yes.", "q3": "Q: Campaign Fund Usage?", "a3": "A: Delivered to NGO.", "q4": "Q: Ownership?", "a4": "A: 30 days.", "q5": "Q: Nickname?", "a5": "A: Fixed to Google." }, "sec_payment": "1. Payment", "sec_donation": "2. Campaign", "sec_general": "3. General" }
                 }
             }
         };
@@ -87,15 +87,15 @@ class I18n {
 
             // Notice Section Overrides for KO
             defaults.modal.notice.title = "📢 공지사항";
-            defaults.modal.notice.tab_intro = "프로젝트 안내";
-            defaults.modal.notice.tab_process = "기부 프로세스";
+            defaults.modal.notice.tab_intro = "서비스 소개";
+            defaults.modal.notice.tab_process = "시즌 보상 안내";
             defaults.modal.notice.tab_refund = "환불 규정";
             defaults.modal.notice.tab_faq = "FAQ";
             defaults.modal.notice.intro = {
-                "headline": "\"가장 넓은 땅을 차지한 팬덤의 이름으로<br>기부금이 전달됩니다\"",
-                "subline": "FANDOM PIXEL은 전 세계 팬덤이 함께 만드는<br>글로벌 기부 프로젝트입니다.",
-                "point1": "픽셀 구매 수익금의 일부는 기부금으로 적립됩니다.",
-                "point2": "매 시즌 종료 시, 가장 많은 영토를 점령한<br>1위 팬덤의 명의로 기부가 진행됩니다.",
+                "headline": "\"가장 넓은 땅을 점령한 1위 팬덤의 이름으로<br>[스페셜 사회공헌 캠페인]이 진행됩니다\"",
+                "subline": "FANDOM PIXEL은 전 세계 팬덤이 함께하는<br>글로벌 땅따먹기 배틀 서비스입니다.",
+                "point1": "픽셀 판매 수익의 일부는 팬덤의 이름으로 사회공헌 활동비로 적립됩니다.",
+                "point2": "매 시즌 종료 시, 가장 많은 영토를 점령한<br>1위 팬덤의 명의로 특별 후원 캠페인이 진행됩니다.",
                 "point3": "여러분의 팬덤을 빛내고 따뜻한 마음을 전하세요!",
                 "season_info": {
                     "title": "📢 시즌제 안내",
@@ -104,7 +104,21 @@ class I18n {
                     "desc2": "새로운 시즌이 시작되면 맵은 초기화되지만, 여러분의 기록은 영원히 남습니다."
                 }
             };
-            // Add process/refund overrides if needed, but intro.season_info is the critical one missing.
+            // Override process section for KO
+            defaults.modal.notice.process = {
+                "title": "📢 시즌 종료 및 리워드 절차",
+                "step1_title": "1. 우승 팬덤 선정",
+                "step1_desc": "매 시즌 종료 시점 점유율 1위 팬덤이 선정됩니다.",
+                "step2_title": "2. 사회공헌 기금 조성",
+                "step2_desc": "픽셀 구매 총액에서 제반 비용을 제외한 수익의 일정 비율을 회사에서 공익 기금으로 출연합니다.",
+                "step3_title": "3. 전달처 선정",
+                "step3_desc": "공신력 있는 복지 재단을 통해 [위기 아동 지원/환경 보호] 등 매 시즌 선정된 테마에 전달됩니다.",
+                "step4_title": "4. 캠페인 리포트",
+                "step4_desc": "캠페인 종료 후 공식 SNS를 통해 전달 결과와 증서를 투명하게 공개합니다.",
+                "step5_title": "5. 아티스트 홍보",
+                "step5_desc": "1위 팬덤의 활동 소식은 공식 트위터(X) 및 보도자료를 통해 배포되어 아티스트의 긍정적인 이미지를 전파합니다."
+            };
+            defaults.modal.notice.faq.sec_donation = "2. 캠페인 관련";
         }
 
         try {
