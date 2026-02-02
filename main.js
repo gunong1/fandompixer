@@ -3238,3 +3238,43 @@ sidePanel.addEventListener('touchend', (e) => {
     }
     isPanelDragging = false;
 });
+
+// --- Socket Event Listeners (Restored) ---
+// Critical validation to ensure socket is available
+if (typeof socket !== 'undefined') {
+    console.log("[Socket] Initializing listeners...");
+
+    socket.on('pixel_update', (updates) => {
+        console.log('[Socket] Received pixel_update:', updates.length);
+        if (!Array.isArray(updates)) return;
+
+        updates.forEach(p => {
+            const key = `${p.x},${p.y}`;
+            // Update local map with snake_case keys used by UI
+            pixelMap.set(key, {
+                x: p.x,
+                y: p.y,
+                color: p.color,
+                idol_group_name: p.idolGroupName, // Map camelCase from server to snake_case for UI
+                owner_nickname: p.ownerNickname   // Map camelCase from server to snake_case for UI
+            });
+        });
+
+        // Redraw canvas to show new colors
+        draw();
+
+        // Update Stats & Clusters
+        if (typeof recalculateClusters === 'function') recalculateClusters();
+        if (typeof recalculateStats === 'function') recalculateStats();
+    });
+
+    socket.on('error', (err) => {
+        console.error('[Socket] Server Error:', err);
+        // Display alert only for explicit error messages relevant to user
+        if (err && err.message) {
+            alert(`[오류] 서버: ${err.message}`);
+        }
+    });
+} else {
+    console.error('[CRITICAL] socket was not found. Real-time updates and purchase verification will fail.');
+}
