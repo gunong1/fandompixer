@@ -1990,11 +1990,11 @@ subscribeButton.onclick = async () => {
             // --- USD Logic (Global - PayPal) ---
             // Exchange Rate: 1450 KRW = 1 USD
             const exchangeRate = 1450;
-            // Calculate Float Amount (e.g. 66.21)
-            let usdAmount = Number((totalAmount / exchangeRate).toFixed(2));
+            // Calculate Integer Amount (Floor to avoid decimals)
+            let usdAmount = Math.floor(totalAmount / exchangeRate);
 
-            // Enforce Minimum $0.01
-            if (usdAmount < 0.01) usdAmount = 0.01;
+            // Enforce Minimum 1 USD (Integer)
+            if (usdAmount < 1) usdAmount = 1;
 
             finalAmount = usdAmount;
             finalCurrency = "USD";
