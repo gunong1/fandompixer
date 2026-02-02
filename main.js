@@ -2161,46 +2161,61 @@ subscribeButton.onclick = async () => {
             const IMP = window.IMP;
             IMP.init("imp02261832"); // Ensure Init
 
+            // Retry Logic for Ambiguous PG Settings (Standard -> Legacy -> Default)
             response = await new Promise((resolve) => {
-                IMP.request_pay({
-                    pg: "html5_inicis",     // [FIX] Standard Web PG (Must match Console)
-                    pay_method: "card",
-                    merchant_uid: paymentId,
-                    name: `Idolpixel: ${pixelsToSend.length} pixels`,
-                    amount: finalAmount,
-                    buyer_email: currentUser ? currentUser.email : undefined,
-                    buyer_name: nickname,
-                    buyer_tel: "010-0000-0000",
-                    m_redirect_url: window.location.href // Mobile Redirects
-                }, async function (rsp) { // PC/In-App Callback
-                    if (rsp.success) {
-                        console.log("[PAYMENT] V1 PC Auth Success. Verifying...", rsp.imp_uid);
+                const pgCandidates = ["html5_inicis", "inicis", null];
+                let attempt = 0;
 
-                        // Immediate Verification
-                        try {
-                            const vRes = await fetch('/api/verify-payment', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    imp_uid: rsp.imp_uid,
-                                    paymentId: paymentId
-                                })
-                            });
-                            const vData = await vRes.json();
+                function requestPayment() {
+                    const currentPg = pgCandidates[attempt];
+                    console.log(`[PAYMENT] Attempt ${attempt + 1}/${pgCandidates.length}: PG=${currentPg || 'Default'}`);
 
-                            if (vData.success) {
-                                resolve(rsp); // Valid Success
-                            } else {
-                                resolve({ code: "VERIFY_FAIL", message: "서버 검증 실패: " + vData.message });
+                    const payData = {
+                        pay_method: "card",
+                        merchant_uid: paymentId,
+                        name: `Idolpixel: ${pixelsToSend.length} pixels`,
+                        amount: finalAmount,
+                        buyer_email: currentUser ? currentUser.email : undefined,
+                        buyer_name: nickname,
+                        buyer_tel: "010-0000-0000",
+                        m_redirect_url: window.location.href
+                    };
+                    if (currentPg) payData.pg = currentPg;
+
+                    IMP.request_pay(payData, async function (rsp) {
+                        if (rsp.success) {
+                            console.log("[PAYMENT] V1 PC Auth Success. Verifying...", rsp.imp_uid);
+                            try {
+                                const vRes = await fetch('/api/verify-payment', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ imp_uid: rsp.imp_uid, paymentId: paymentId })
+                                });
+                                const vData = await vRes.json();
+                                if (vData.success) {
+                                    resolve(rsp);
+                                } else {
+                                    resolve({ code: "VERIFY_FAIL", message: "서버 검증 실패: " + vData.message });
+                                }
+                            } catch (e) {
+                                resolve({ code: "VERIFY_ERR", message: "서버 통신 오류" });
                             }
-                        } catch (e) {
-                            resolve({ code: "VERIFY_ERR", message: "서버 통신 오류" });
+                        } else {
+                            console.error(`[PAYMENT] Fail (PG=${currentPg}):`, rsp.error_msg);
+                            // Retry if "pg parameter" error is detected
+                            if (rsp.error_msg && (rsp.error_msg.includes("pg") || rsp.error_msg.includes("PG")) && attempt < pgCandidates.length - 1) {
+                                console.warn("[PAYMENT] Retrying with alternative PG setup...");
+                                attempt++;
+                                // Short delay before retry to clear invalid invocation state if any
+                                setTimeout(requestPayment, 100);
+                            } else {
+                                resolve({ code: "V1_FAIL", message: rsp.error_msg });
+                            }
                         }
-                    } else {
-                        console.error("[PAYMENT] V1 Failure:", rsp.error_msg);
-                        resolve({ code: "V1_FAIL", message: rsp.error_msg });
-                    }
-                });
+                    });
+                }
+
+                requestPayment(); // Start
             });
         }
 
