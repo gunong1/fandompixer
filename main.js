@@ -2019,8 +2019,8 @@ subscribeButton.onclick = async () => {
             paymentRequest.totalAmount = finalAmount;
             paymentRequest.currency = "USD";
             paymentRequest.channelKey = targetChannelKey;
-            paymentRequest.payMethod = "PAYPAL"; // Trying definitive enum
-            paymentRequest.country = "US"; // Adding country just in case
+            paymentRequest.payMethod = "CARD"; // V2 standard enum even for PayPal
+            paymentRequest.country = "US";
             paymentRequest.windowType = {
                 pc: 'IFRAME',
                 mobile: 'POPUP'
