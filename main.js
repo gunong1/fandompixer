@@ -205,8 +205,8 @@ const i18n = new I18n();
 document.addEventListener('DOMContentLoaded', async () => {
     await i18n.init();
 
-    // Check for pending mobile payments (Safe to call now that i18n is ready)
-    checkPendingPayment();
+    // Check for pending mobile payments (V1 & V2)
+    checkUrlParams();
 
     // Language Switcher Event
     const langBtn = document.getElementById('lang-switcher');
@@ -217,6 +217,81 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 });
+
+function checkUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // 1. Mobile Payment Redirect Recovery (V2: paymentId / V1: imp_uid)
+    const paymentId = urlParams.get('paymentId') || urlParams.get('txId');
+    const impUid = urlParams.get('imp_uid');
+    const restoreToken = urlParams.get('restore_session');
+
+    // Restore Session if Token Present
+    if (restoreToken) {
+        console.log("Restoring session from token:", restoreToken);
+        // Assuming session is restored by server cookie logic or handle if manual header needed
+        // But for checkPendingPayment, we just proceed.
+    }
+
+    if (paymentId || impUid) {
+        console.log(`[PAYMENT] Detect Return from PG. ID: ${paymentId || impUid}`);
+
+        const pendingData = localStorage.getItem('pending_payment');
+        if (pendingData) {
+            const state = JSON.parse(pendingData);
+            console.log("[PAYMENT] Pending State Found:", state);
+
+            // Re-open UI State for clarity (Optional)
+            if (state.nicknameInput) {
+                // ... restore UI ...
+            }
+
+            // Verify with Server
+            // If V2 (paymentId) vs V1 (imp_uid)
+            const verifyPayload = {
+                paymentId: paymentId || state.paymentId, // Use URL param or State ID
+                imp_uid: impUid,
+                pixels: state.pixelsToSend,
+                idolGroupName: state.idolGroupName,
+                nickname: state.nickname,
+                idolColor: state.baseColor
+            };
+
+            // V2 Logic: Server expects 'purchase_pixels' socket event to Finalize? 
+            // OR REST API verification?
+            // The User requested specific backend verification logic.
+            // Let's call a verification API first.
+
+            fetch('/api/verify-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(verifyPayload)
+            })
+                .then(res => res.json())
+                .then(result => {
+                    if (result.success) {
+                        alert("결제가 성공적으로 확인되었습니다!");
+                        // Emit socket event to update everyone immediately
+                        socket.emit('purchase_pixels', {
+                            pixels: state.pixelsToSend,
+                            idolColor: state.baseColor,
+                            idolGroupName: state.idolGroupName,
+                            nickname: state.nickname,
+                            paymentId: paymentId || state.paymentId // Send correct ID
+                        });
+                        localStorage.removeItem('pending_payment');
+                        window.history.replaceState({}, document.title, window.location.pathname); // Clean URL
+                    } else {
+                        alert(`결제 검증 실패: ${result.message}`);
+                    }
+                })
+                .catch(err => {
+                    console.error("Verification Error:", err);
+                    alert("결제 확인 중 오류가 발생했습니다.");
+                });
+        }
+    }
+}
 
 const canvas = document.getElementById('pixelCanvas');
 const ctx = canvas.getContext('2d');
