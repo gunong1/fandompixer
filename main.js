@@ -2151,40 +2151,58 @@ subscribeButton.onclick = async () => {
 
         } else {
             // ============================================================
-            // 2. KRW Logic (Domestic - Inicis) -> V1 SDK (IMP) [RESTORED]
+            // 2. KRW Logic (Domestic - Inicis) -> V2 SDK (PortOne) [RESTORED]
             // ============================================================
+            // Reason: V1 'pg' code fails due to config mismatch. V2 'channelKey' works.
             finalAmount = totalAmount;
             finalCurrency = "KRW";
+            targetChannelKey = paymentConfig.channelKey;
 
-            console.log(`[PAYMENT] Mode: KRW(Inicis V1 Default), Amount: ${finalAmount}`);
+            console.log(`[PAYMENT] Mode: KRW(Inicis V2), Channel: ${targetChannelKey}, Amount: ${finalAmount}`);
 
-            const IMP = window.IMP;
-            IMP.init("imp02261832");
+            if (typeof PortOne === 'undefined') {
+                return alert("결제 모듈(PortOne V2)이 로드되지 않았습니다. 새로고침 해주세요.");
+            }
 
-            // Wrap V1 callback in Promise
-            response = await new Promise((resolve) => {
-                const payData = {
-                    pg: "html5_inicis", // [FIX] Restored Explicit PG (Default missing in Console causing error)
-                    pay_method: "card",
-                    merchant_uid: paymentId,
-                    name: `Idolpixel: ${pixelsToSend.length} pixels`,
-                    amount: finalAmount,
-                    buyer_email: currentUser ? currentUser.email : undefined,
-                    buyer_name: nickname,
-                    buyer_tel: "010-0000-0000",
-                    m_redirect_url: window.location.href
-                };
+            const paymentRequest = {
+                storeId: paymentConfig.storeId,
+                paymentId: paymentId,
+                orderName: `Idolpixel: ${pixelsToSend.length} pixels`,
+                totalAmount: finalAmount,
+                currency: "KRW",
+                channelKey: targetChannelKey,
+                payMethod: "CARD",
+                customer: {
+                    fullName: nickname,
+                    phoneNumber: "010-0000-0000",
+                    email: currentUser ? currentUser.email : undefined,
+                }
+            };
 
-                IMP.request_pay(payData, function (rsp) {
-                    if (rsp.success) {
-                        console.log("[PAYMENT] V1 Success:", rsp);
-                        resolve(rsp);
+            // Mobile Redirect Logic (V2)
+            if (isMobile()) {
+                try {
+                    const tokenRes = await fetch('/api/auth/recovery-token', { method: 'POST' });
+                    if (tokenRes.ok) {
+                        const tokenData = await tokenRes.json();
+                        if (tokenData.token) {
+                            const returnUrl = new URL(window.location.origin + window.location.pathname);
+                            returnUrl.searchParams.set('restore_session', tokenData.token);
+                            paymentRequest.redirectUrl = returnUrl.toString();
+                        }
                     } else {
-                        console.error("[PAYMENT] V1 Failure:", rsp.error_msg);
-                        resolve({ code: "V1_FAIL", message: rsp.error_msg });
+                        paymentRequest.redirectUrl = window.location.origin + window.location.pathname;
                     }
-                });
-            });
+                } catch (e) {
+                    paymentRequest.redirectUrl = window.location.origin + window.location.pathname;
+                }
+            }
+
+            response = await PortOne.requestPayment(paymentRequest);
+
+            if (response.txId) {
+                console.log("[PAYMENT] Captured txId for verification:", response.txId);
+            }
         }
 
         if (response.code !== undefined) {
