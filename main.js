@@ -285,6 +285,14 @@ function checkUrlParams() {
                             paymentId: state.paymentId, // MerchantUID
                             txId: paymentId || impUid   // Verification ID
                         });
+
+                        // [FIX] Trigger Share Card (Certification) for Mobile Return
+                        setTimeout(() => {
+                            if (typeof generateShareCard === 'function') {
+                                generateShareCard(state.idolGroupName, state.pixelsToSend.length, state.baseColor, state.pixelsToSend);
+                            }
+                        }, 500);
+
                         localStorage.removeItem('pending_payment');
                         window.history.replaceState({}, document.title, window.location.pathname); // Clean URL
                     } else {
