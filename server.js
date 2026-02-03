@@ -259,16 +259,50 @@ app.post('/api/verify-payment', async (req, res) => {
         const { response: { access_token } } = await tokenRes.json();
 
         // 2. Get Payment Data
+        let paymentData = null;
+        let v1Success = false;
+
         const paymentRes = await fetch(requestUrl, {
             headers: { "Authorization": access_token }
         });
 
-        if (!paymentRes.ok) {
-            // If Find by MerchantUID failed, try treating paymentId as ID (fallback)?
-            // But assume API handles it.
-            throw new Error("Failed to fetch payment data from PortOne");
+        if (paymentRes.ok) {
+            const json = await paymentRes.json();
+            if (json.code === 0 && json.response) {
+                paymentData = json.response;
+                v1Success = true;
+            }
         }
-        const { response: paymentData } = await paymentRes.json();
+
+        // [Fallback] Try V2 API if V1 failed
+        if (!v1Success && process.env.PORTONE_API_SECRET) {
+            const v2Id = txId || paymentId;
+            console.log(`[VERIFY-API] V1 lookup failed. Trying V2 API with ${v2Id}`);
+            try {
+                const v2Res = await fetch(`https://api.portone.io/payments/${v2Id}`, {
+                    headers: { "Authorization": `PortOne ${process.env.PORTONE_API_SECRET}` }
+                });
+                if (v2Res.ok) {
+                    const v2Data = await v2Res.json();
+                    // Normalize V2 to V1 structure
+                    paymentData = {
+                        status: v2Data.status === 'PAID' ? 'paid' : v2Data.status.toLowerCase(),
+                        amount: v2Data.amount.total,
+                        merchant_uid: v2Data.id,
+                        currency: v2Data.amount.currency
+                    };
+                    console.log(`[VERIFY-API] V2 API Success. Status: ${paymentData.status}`);
+                }
+            } catch (e) {
+                console.warn(`[VERIFY-API] V2 lookup failed: ${e.message}`);
+            }
+        }
+
+        if (!paymentData) {
+            console.error("[VERIFY-API] All lookups failed.");
+            throw new Error("Failed to fetch payment data from PortOne (V1/V2)");
+        }
+
 
         if (!paymentData) return res.status(404).json({ success: false, message: "Payment not found" });
 
