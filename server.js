@@ -327,32 +327,33 @@ app.get('/api/pixels/chunk', async (req, res) => {
     if (minX === undefined) return res.status(400).json({ error: 'Missing bounds' });
 
     minX = Number(minX); minY = Number(minY); maxX = Number(maxX); maxY = Number(maxY);
+    const fmt = format || 'bin';
 
-    const timerLabel = `chunk_${minX}_${minY}`;
-    console.time(timerLabel);
+    // 1. Normalized Cache Key
+    const cacheKey = `chunk_${minX}_${minY}_${maxX}_${maxY}_${fmt}`;
 
-    // [CACHE] Check Memory Cache
-    const cacheKey = `chunk_${minX}_${minY}_${maxX}_${maxY}_${format || 'bin'}`;
-    const cachedData = pixelCache.get(cacheKey);
-    if (cachedData) {
-        console.log(`[CACHE] HIT: ${cacheKey}`);
-        res.set('X-Cache', 'HIT');
-        res.set('Cache-Control', 'public, max-age=60');
-        res.set('Server-Timing', 'cache;desc="Hit"');
+    // 2. Fail-Safe Cache Lookup
+    try {
+        const cachedData = pixelCache.get(cacheKey);
+        if (cachedData) {
+            console.log(`[CACHE] HIT: ${cacheKey}`);
+            res.set('X-Cache-Status', 'HIT');
+            res.set('Cache-Control', 'public, max-age=60');
+            res.set('Server-Timing', 'cache;desc="Hit"');
 
-        if (format === 'json') {
-            console.timeEnd(timerLabel);
-            return res.json(cachedData);
+            if (fmt === 'json') return res.json(cachedData);
+
+            res.set('Content-Type', 'application/octet-stream');
+            return res.send(cachedData);
         }
-
-        res.set('Content-Type', 'application/octet-stream');
-        console.timeEnd(timerLabel);
-        return res.send(cachedData);
+    } catch (cacheErr) {
+        console.warn(`[CACHE] Read Error: ${cacheErr.message}. Falling back to DB.`);
+        // Continue to DB query
     }
 
     try {
-        console.log(`[CACHE] MISS: ${cacheKey} (DB Query)`);
-        res.set('X-Cache', 'MISS');
+        console.log(`[CACHE] MISS: ${cacheKey}`);
+        res.set('X-Cache-Status', 'MISS');
         res.set('Server-Timing', 'cache;desc="Miss"');
 
         const pixels = await Pixel.find({
@@ -364,17 +365,16 @@ app.get('/api/pixels/chunk', async (req, res) => {
             .lean();
 
         // 1. JSON Format Support
-        if (format === 'json') {
-            pixelCache.set(cacheKey, pixels);
+        if (fmt === 'json') {
+            try { pixelCache.set(cacheKey, pixels); } catch (e) { console.warn("Cache Write Failed", e); }
             res.set('Cache-Control', 'public, max-age=60');
-            console.timeEnd(timerLabel);
             return res.json(pixels);
         }
 
         // 2. Binary Format (Default)
         const buffers = [];
         for (const p of pixels) {
-            const { r, g, b } = parseColor(p.color);
+            const { r: pr, g: pg, b: pb } = parseColor(p.color);
             let groupBuf = Buffer.from(p.idol_group_name || '');
             if (groupBuf.length > 255) groupBuf = groupBuf.subarray(0, 255);
             let ownerBuf = Buffer.from(p.owner_nickname || '');
@@ -384,9 +384,9 @@ app.get('/api/pixels/chunk', async (req, res) => {
             let offset = 0;
             buf.writeUInt16BE(p.x, offset); offset += 2;
             buf.writeUInt16BE(p.y, offset); offset += 2;
-            buf.writeUInt8(r, offset); offset += 1;
-            buf.writeUInt8(g, offset); offset += 1;
-            buf.writeUInt8(b, offset); offset += 1;
+            buf.writeUInt8(pr, offset); offset += 1;
+            buf.writeUInt8(pg, offset); offset += 1;
+            buf.writeUInt8(pb, offset); offset += 1;
             buf.writeUInt8(groupBuf.length, offset); offset += 1;
             if (groupBuf.length > 0) { groupBuf.copy(buf, offset); offset += groupBuf.length; }
             buf.writeUInt8(ownerBuf.length, offset); offset += 1;
@@ -395,17 +395,14 @@ app.get('/api/pixels/chunk', async (req, res) => {
         }
 
         const finalBuffer = Buffer.concat(buffers);
-        pixelCache.set(cacheKey, finalBuffer);
+        try { pixelCache.set(cacheKey, finalBuffer); } catch (e) { console.warn("Cache Write Failed", e); }
 
         res.set('Content-Type', 'application/octet-stream');
         res.set('Cache-Control', 'public, max-age=60');
-
-        console.timeEnd(timerLabel);
         res.send(finalBuffer);
 
     } catch (e) {
         console.error("Chunk Error:", e);
-        console.timeEnd(timerLabel);
         res.status(500).send(e.message);
     }
 });
