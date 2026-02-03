@@ -2164,6 +2164,7 @@ subscribeButton.onclick = async () => {
             // Wrap V1 callback in Promise
             response = await new Promise((resolve) => {
                 const payData = {
+                    pg: "html5_inicis", // [FIX] Restored Explicit PG (Default missing in Console causing error)
                     pay_method: "card",
                     merchant_uid: paymentId,
                     name: `Idolpixel: ${pixelsToSend.length} pixels`,
@@ -2172,7 +2173,6 @@ subscribeButton.onclick = async () => {
                     buyer_name: nickname,
                     buyer_tel: "010-0000-0000",
                     m_redirect_url: window.location.href
-                    // pg parameter REMOVED as requested to use Console Default
                 };
 
                 IMP.request_pay(payData, function (rsp) {
